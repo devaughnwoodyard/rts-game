@@ -125,5 +125,5 @@ export const CONFIG = {
 
   // Perf: uniform spatial hash for neighbor/target queries; coarse nav grid for A*.
   hash: { cell: 16 },
-  nav: { cell: 2, infl: 1.0, pathsPerStep: 6, maxIter: 30000 },
+  nav: { cell: 2, infl: 1.0, pathsPerStep: 3, maxIter: 30000 },
 };

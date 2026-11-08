@@ -187,7 +187,11 @@ function emberMat() {
     uniforms: { uTime: U.time }, transparent: true, depthWrite: false, blending: T.AdditiveBlending,
     vertexShader: `uniform float uTime; attribute vec3 aBase; attribute vec2 aPS; varying float vA; varying float vK; varying vec2 vUv;
       void main(){ float k = fract(uTime * 0.45 + aPS.x);
+        #ifdef USE_INSTANCING
+        vec4 wb = modelMatrix * instanceMatrix * vec4(aBase, 1.0);
+        #else
         vec4 wb = modelMatrix * vec4(aBase, 1.0);
+        #endif
         wb.xyz += vec3(sin(aPS.x * 50.0 + uTime * 3.0) * 0.4 * k, k * 4.0 * aPS.y, cos(aPS.x * 31.0 + uTime * 2.3) * 0.4 * k);
         vec4 mv = viewMatrix * wb; float sz = 0.2 * aPS.y * (1.0 - 0.5 * k);
         mv.xy += position.xy * sz; gl_Position = projectionMatrix * mv;
@@ -204,7 +208,11 @@ function smokeMat(col = [0.16, 0.14, 0.13], alpha = 0.75, additive = false) {
     transparent: true, depthWrite: false, blending: additive ? T.AdditiveBlending : T.NormalBlending,
     vertexShader: `uniform float uTime; attribute vec3 aBase; attribute vec2 aPS; varying float vA; varying vec2 vUv;
       void main(){ float k = fract(uTime * 0.2 + aPS.x);
+        #ifdef USE_INSTANCING
+        vec4 wb = modelMatrix * instanceMatrix * vec4(aBase, 1.0);
+        #else
         vec4 wb = modelMatrix * vec4(aBase, 1.0);
+        #endif
         wb.xyz += vec3(sin(aPS.x * 40.0) * 0.5 * k + k * 1.6, k * 6.5 * aPS.y, cos(aPS.x * 23.0) * 0.5 * k);
         vec4 mv = viewMatrix * wb; float sz = aPS.y * (0.8 + k * 3.2);
         mv.xy += position.xy * sz; gl_Position = projectionMatrix * mv;
@@ -330,6 +338,12 @@ function Mline(a, b, sx, sz) { // unit-height geometry stretched from a to b
 }
 const polar = (r, a, y = 0) => [Math.sin(a) * r, y, Math.cos(a) * r]; // matches CylinderGeometry vertex angles
 
+function ccBeacon(k, p, col, h = 3.5, slot = null) { // tall faction-colour beacon visible from the aerial camera
+  k.add(slot || 'glow', cyl(0.07, 0.07, h, 4), 0x222222, [p[0], p[1] + h / 2, p[2]]);
+  k.add('glow', sph(0.55, 10, 6), col, [p[0], p[1] + h + 0.3, p[2]], 0, 1, { fx: 3.5, smooth: true });
+  k.add('glow', torus(1.1, 0.09, 3, 20), col, [p[0], p[1] + h + 0.3, p[2]], [PI / 2, 0, 0], 1, { fx: 4.2 });
+  k.add('glow', torus(1.6, 0.06, 3, 24), col, [p[0], p[1] + h * 0.6, p[2]], [PI / 2, 0, 0], 1, { fx: 5.5 });
+}
 // ---------------------------------------------------------------- Kit: collects geometry per material slot, merges on build
 class Kit {
   constructor(theme) { this.theme = theme === 'C' && MAT_OVERRIDE ? MAT_OVERRIDE : theme; this.s = {}; this.st = [null]; this.parts = { smoke: [], ember: [], haze: [] }; }
@@ -1303,6 +1317,7 @@ function F_cc() { // fortress-forge carved into a rock outcrop: crucible core + 
   // crucible core
   k.add('solid', cyl(3.2, 2.2, 1.6, 10), F.iron, [0, 6.4, 0]);
   k.add('solid', torus(3.15, 0.18, 4, 20), F.iron2, [0, 7.2, 0], [PI / 2, 0, 0]);
+  if (F.spires) { k.add('glow', torus(3.3, 0.16, 3, 28), F.molten, [0, 7.3, 0], [PI / 2, 0, 0], 1, { fx: 3.2 }); k.add('glow', torus(5.1, 0.14, 3, 28), F.molten, [0, 5.75, 0], [PI / 2, 0, 0], 1, { fx: 3.6 }); ccBeacon(k, [3.0, 5.6, 3.0], 0xff5a12, 4.5, 'solid'); }
   k.add('glow', cyl(2.95, 2.95, 0.08, 16), F.molten, [0, 7.05, 0], 0, 1, { fx: 3.1 });
   k.add('glow', cyl(1.6, 1.6, 0.1, 12), F.gold, [0, 7.1, 0], 0, 1, { fx: 3.7 });
   for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; k.flame(polar(1.9, a, 7.05), 1.2 + (i % 2) * 0.6, 0.35); }
@@ -1506,7 +1521,7 @@ function eTree(k, p, h, s, r) { // ancient tree: thick trunk, roots gripping roc
   k.add('leaf', cyl(0.35, 0.6, h, 7), E.bark, [0, h / 2, 0], [0.08, 0, 0.05]);
   for (let i = 0; i < 6; i++) { const a = i / 6 * TAU + r() * 0.4; k.line('leaf', [0, 0.6, 0], polar(1.4 + r() * 0.6, a, -0.25), 0.16, E.bark, 5); }
   for (let i = 0; i < 3; i++) { const a = i / 3 * TAU + 0.4; k.line('leaf', [0, h * 0.75, 0], polar(1.2, a, h + 0.3), 0.14, E.bark, 5); }
-  const blobs = [[0, h + 0.8, 0, 1.6], [1.0, h + 0.4, 0.4, 1.1], [-0.9, h + 0.5, -0.3, 1.15], [0.2, h + 0.3, -1.0, 1.0], [-0.3, h + 0.4, 1.0, 1.0]];
+  const blobs = [[0, h + 1.0, 0, 2.0], [1.3, h + 0.5, 0.5, 1.4], [-1.2, h + 0.6, -0.4, 1.45], [0.3, h + 0.4, -1.3, 1.3], [-0.4, h + 0.5, 1.3, 1.3], [0.2, h + 1.9, 0.1, 1.2]];
   for (const [x, y, z, rr] of blobs) k.add('leaf', ico(rr, 0), (x2, y2) => (y2 > p[1] + (h + 0.9) * s ? E.leaf2 : E.leaf), [x, y, z], [r(), r(), r()], [1, 0.75, 1]);
   k.pop();
 }
@@ -1543,9 +1558,11 @@ function E_cc() { // temple grown from a red-rock mountainside, ancient tree, su
   k.pop();
   for (const [x, z] of [[3.0, 3.0], [3.0, -1.8], [-1.8, 3.0]]) eColumn(k, [x, 6.2, z], 2.4, 0.32);
   k.add('stone', bbox(3.6, 0.4, 3.6, 0.08), eStone(E.sand2), [0.6, 8.8, 0.6]);
+  k.add('gold', cyl(0.01, 2.4, 1.6, 4), E.gold, [0.6, 9.8, 0.6], [0, PI / 4, 0]);
+  ccBeacon(k, [-3.0, 6.4, 3.0], 0x5fd35f, 4.5, 'leaf');
   // sun disc + beam crowning the temple
-  k.add('stone', cyl(0.5, 0.7, 2.0, 8), eStone(E.sand2), [0.6, 10.0, 0.6]);
-  eSunDisc(k, [0.6, 11.6, 0.6], 1.6, 0.35, -0.6, 8);
+  k.add('stone', cyl(0.5, 0.7, 2.6, 8), eStone(E.sand2), [0.6, 11.6, 0.6]);
+  eSunDisc(k, [0.6, 13.5, 0.6], 1.8, 0.35, -0.6, 8);
   // ancient tree gripping the rock at the back
   eTree(k, [-3.6, 3.0, -3.4], 4.6, 1.6, r); eTree(k, [4.2, 2.0, -4.6], 3.0, 1.1, r); eTree(k, [-5.4, 1.2, 3.2], 2.6, 1.0, r);
   for (let i = 0; i < 5; i++) k.line('leaf', [-3.6, 3.4, -3.4], polar(6.6, PI + 0.6 + (i - 2) * 0.35, 0.3), 0.18, E.bark, 5);
@@ -1796,7 +1813,9 @@ function S_cc() { // great sail-dome nomad hall, tesla spire, turbines, sail tow
   k.add('jacq', gc('domeBand', () => new T.CylinderGeometry(1, 1, 1, 24, 1, true)), S.crimson, [0, 2.1, 0], 0, [6.02, 1.0, 6.02], { smooth: true });
   sDome(k, [0, 5.4, 0], 3.0, 2.6, S.grey);
   // lightning spire on top
-  sTesla(k, [0, 7.9, 0], 5.6, 6, 1.0);
+  sTesla(k, [0, 7.9, 0], 8.0, 6, 1.1);
+  k.add('solid', torus(6.1, 0.22, 4, 32), 0xffffff, [0, 0.9, 0], [PI / 2, 0, 0]); k.add('solid', torus(3.1, 0.16, 4, 24), 0xffffff, [0, 5.5, 0], [PI / 2, 0, 0]);
+  ccBeacon(k, [3.6, 0.6, -3.6], 0xe8d27a, 7.0, 'solid');
   // door + awning on +X
   k.add('solid', bbox(1.4, 2.8, 3.0, 0.1), S.grey2, [6.2, 1.9, 0]);
   k.add('glow', box(0.08, 2.0, 2.0), S.volt, [6.92, 1.7, 0], 0, 1, { fx: 3.4 });
@@ -2061,7 +2080,9 @@ function I_cc() { // fortified industrial command plant
     for (const dz of [-1.5, 1.5]) k.add('steel', sph(0.08, 5, 3), I.dark, [p[0] + Math.cos(a) * dz * 0 + Math.sin(a) * 0.12, 2.6, p[2] - Math.sin(a) * dz + Math.cos(a) * 0.12]); }
   k.add('steel', cyl(6.45, 6.45, 0.35, 8), I.dark, [0, 3.95, 0], [0, PI / 8, 0]);
   k.add('conc', bbox(7.0, 2.4, 7.0, 0.12), I.conc, [-0.6, 5.3, 0]);
-  k.add('corr', bbox(7.3, 0.25, 7.3, 0.05), I.blue2, [-0.6, 6.6, 0]);
+  k.add('corr', bbox(7.3, 0.25, 7.3, 0.05), 0x3a6ea5, [-0.6, 6.6, 0]);
+  for (const s2 of [1, -1]) { iHaz(k, [-0.6, 6.78, s2 * 3.6], 7.3, 0.12, 0.25); iHaz(k, [-0.6 + s2 * 3.6, 6.78, 0], 0.25, 0.12, 7.3); }
+  ccBeacon(k, [-2.8, 6.75, 2.6], 0x2fb8ff, 4.5, 'steel');
   for (const z of [-2.0, 0, 2.0]) k.add('glow', box(0.06, 0.4, 1.2), I.cyan, [2.92, 5.4, z], 0, 1, { fx: 2.2 });
   // steel control tower + radar
   k.add('steel', bbox(2.8, 5.2, 2.8, 0.08), I.blue, [1.4, 9.3, -1.2]);
@@ -2087,7 +2108,8 @@ function I_barracks() { // concrete barracks block, steel doors, watchtower
   const k = new Kit('I');
   k.add('conc', bbox(9.2, 0.3, 7.4, 0.08), I.conc2, [0, 0.15, 0]);
   k.add('conc', bbox(7.6, 3.6, 5.8, 0.12), I.conc, [-0.4, 2.1, 0]);
-  k.add('corr', prism([[-3.1, 0], [3.1, 0], [0, 1.1]], 8.0, 0.04), I.blue2, [-0.4, 3.9, 0], [0, PI / 2, 0]);
+  k.add('corr', prism([[-3.1, 0], [3.1, 0], [0, 1.1]], 8.0, 0.04), 0x3a6ea5, [-0.4, 3.9, 0], [0, PI / 2, 0]);
+  for (const s2 of [1, -1]) iHaz(k, [-0.4, 3.95, s2 * 3.1], 8.0, 0.14, 0.2);
   for (const s of [1, -1]) { k.add('steel', box(7.0, 0.5, 0.08), I.blue, [-0.4, 2.8, s * 2.92]); for (const x of [-3, -1.4, 0.2, 1.8]) k.add('glow', box(0.8, 0.3, 0.05), I.cyan, [x, 1.8, s * 2.93], 0, 1, { fx: 2.1 }); }
   k.add('shutter', box(0.18, 2.4, 2.4), I.steel, [3.45, 1.5, 0]);
   iHaz(k, [3.5, 2.85, 0], 0.2, 0.3, 3.0); for (const z of [1.35, -1.35]) iHaz(k, [3.5, 1.5, z], 0.2, 2.6, 0.3);
@@ -2107,7 +2129,8 @@ function I_factory() { // steel assembly hall, rolling door, overhead crane, rai
   const k = new Kit('I');
   k.add('conc', bbox(11, 0.3, 8.4, 0.08), I.conc2, [0.3, 0.15, 0]);
   k.add('corr', box(9.2, 5.0, 7.2), I.blue, [-0.3, 2.8, 0]);
-  k.add('corr', prism([[-3.8, 0], [3.8, 0], [0, 1.6]], 9.6, 0.04), I.steel, [-0.3, 5.3, 0], [0, PI / 2, 0]);
+  k.add('corr', prism([[-3.8, 0], [3.8, 0], [0, 1.6]], 9.6, 0.04), 0x3a6ea5, [-0.3, 5.3, 0], [0, PI / 2, 0]);
+  for (const s2 of [1, -1]) iHaz(k, [-0.3, 5.35, s2 * 3.8], 9.6, 0.14, 0.22);
   for (const x of [-4.8, -1.6, 1.6, 4.3]) for (const s of [1, -1]) k.add('steel', box(0.25, 5.2, 0.25), I.dark, [x, 2.8, s * 3.65]);
   k.add('conc', bbox(9.4, 1.0, 7.4, 0.06), I.conc, [-0.3, 0.8, 0]);
   // rolling door (half open) on +X
@@ -2484,8 +2507,8 @@ function decorForge(k, lx, lz, i, r, ry) {
   }
 }
 
-const VOLC = { sand: 0x5a504c, sand2: 0x6e625c, rock: 0x3a2e2a, rock2: 0x2a1c1a, iron: 0x2b2724, iron2: 0x161012, steel: 0x3e3634,
-  red: 0xa3241c, red2: 0x6e1a14, molten: 0xff5a12, gold: 0xffb340, brick: 0x8a6e66, lavaW: 0.3, spires: true, dark: true };
+const VOLC = { sand: 0x6a5e58, sand2: 0x7a6c64, rock: 0x4a3c36, rock2: 0x2a1c1a, iron: 0x2b2724, iron2: 0x161012, steel: 0x3e3634,
+  red: 0xa3241c, red2: 0x6e1a14, molten: 0xff5a12, gold: 0xffb340, brick: 0x8a6e66, lavaW: 0.5, spires: true, dark: true };
 const F0 = { ...F, lavaW: 0, spires: false, dark: false };
 function withPal(pal, fn) { return (v) => { Object.assign(F, pal); MAT_OVERRIDE = 'X'; try { return fn(v); } finally { Object.assign(F, F0); MAT_OVERRIDE = null; } }; }
 function decorVolcanic(k, lx, lz, i, r, ry) {
@@ -2552,8 +2575,47 @@ export function makeModel(THREE, kind, team, faction) {
   const o = TPL.get(key).clone();
   const tur = o.getObjectByName('turret'); if (tur) o.userData.turret = tur;
   regAnim(o); if (orig !== kind) o.userData.kind = orig;
+  if (INST_ON && kind !== 'rock') addProxy(key, TPL.get(key), o);
   return o;
 }
+
+// ---------------------------------------------------------------- GPU instancing
+// Every entity model is a "proxy": a normal Object3D tree (engine moves/rotates/hides it and raycasts it), whose meshes
+// are invisible. updateModels() copies each proxy mesh's world matrix into one shared InstancedMesh per template mesh,
+// so N tanks of a faction cost the same draw calls as one. Hidden proxies (or hidden ancestors) are skipped.
+let INST_ON = true;
+export function setInstancing(on) { INST_ON = !!on; }
+const BATCH = new Map();
+let SCENE = null;
+function addProxy(key, tpl, o) {
+  let b = BATCH.get(key);
+  if (!b) { const tm = []; tpl.traverse(m => { if (m.isMesh) tm.push(m); }); b = { tm, proxies: [], ims: [], cap: 0 }; BATCH.set(key, b); }
+  const pm = []; o.traverse(m => { if (m.isMesh) { pm.push(m); m.visible = false; } });
+  b.proxies.push({ o, pm, born: U.time.value });
+}
+function growBatch(b, need) {
+  const cap = Math.max(8, 1 << Math.ceil(Math.log2(need)));
+  for (const im of b.ims) { im.parent?.remove(im); im.dispose(); }
+  b.ims = b.tm.map(m => { const im = new T.InstancedMesh(m.geometry, m.material, cap);
+    im.castShadow = m.castShadow; im.receiveShadow = m.receiveShadow; im.renderOrder = m.renderOrder; im.frustumCulled = m.frustumCulled; im.raycast = () => {}; im.count = 0;
+    im.userData.instanced = true; SCENE.add(im); return im; });
+  b.cap = cap;
+}
+function syncInstances(tt) {
+  for (const b of BATCH.values()) {
+    for (let i = b.proxies.length - 1; i >= 0; i--) {
+      const p = p_root(b.proxies[i]);
+      if (!p.inScene) { if (tt - b.proxies[i].born > 10 || tt < b.proxies[i].born) b.proxies.splice(i, 1); else b.proxies[i].vis = false; continue; }
+      SCENE = SCENE || p.root; b.proxies[i].vis = p.vis;
+    }
+    if (!SCENE) continue;
+    const live = b.proxies.filter(p => p.vis);
+    if (live.length > b.cap || !b.ims.length) growBatch(b, Math.max(1, live.length));
+    live.forEach((p, n) => { p.o.updateMatrixWorld(true); for (let j = 0; j < b.ims.length; j++) b.ims[j].setMatrixAt(n, p.pm[j].matrixWorld); });
+    for (const im of b.ims) { im.count = live.length; im.instanceMatrix.needsUpdate = true; if (im.frustumCulled && live.length) im.computeBoundingSphere(); }
+  }
+}
+function p_root(px) { let r = px.o, vis = r.visible; while (r.parent) { r = r.parent; if (!r.visible) vis = false; } return { root: r, inScene: !!r.isScene, vis }; }
 
 const ANIM = [];
 function regAnim(o) { o.traverse(c => { if (c.name === 'spin' || c.name === 'spinY' || c.name === 'bob' || c.name === 'airShadow') ANIM.push({ o: c, y0: c.position.y, ph: Math.random() * TAU, born: U.time.value }); }); }
@@ -2561,6 +2623,7 @@ export function updateModels(dt, t) {
   U.time.value = Number.isFinite(t) ? t : U.time.value + (dt || 0);
   if (TEX.scan) TEX.scan.offset.y = -U.time.value * 0.35;
   const tt = U.time.value;
+  if (BATCH.size) syncInstances(tt);
   for (let i = ANIM.length - 1; i >= 0; i--) {
     const a = ANIM[i]; let r = a.o; while (r.parent) r = r.parent;
     if (!r.isScene) { if (tt - a.born > 10 || tt < a.born) ANIM.splice(i, 1); continue; }

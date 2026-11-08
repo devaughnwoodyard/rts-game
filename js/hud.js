@@ -37,7 +37,11 @@ export function createHud(world, sim) {
   const btnDef = el('button', 'v-def', 'Defenses');
   const btnView = el('button', '', 'Tactical');
   const btnSpeed = el('button', '', '1x');
-  top.append(stats, el('div', 'v-sp'), btnDef, btnView, btnSpeed);
+  const qName = { low: 'Low', med: 'Med', high: 'High' };
+  const btnQ = el('button', 'v-q', 'GFX ' + (qName[world.quality] || 'Med'));
+  btnQ.title = 'Graphics quality (reloads)';
+  btnQ.addEventListener('click', () => { const qs = world.qualities || ['low', 'med', 'high']; world.setQuality?.(qs[(qs.indexOf(world.quality) + 1) % qs.length]); });
+  top.append(stats, el('div', 'v-sp'), btnDef, btnView, btnSpeed, btnQ);
   root.append(top);
 
   btnView.addEventListener('click', () => {

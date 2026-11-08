@@ -26,3 +26,4 @@ world.onFrame((dt) => {
   fx?.update?.(dt);
   hud?.update?.(dt);
 });
+const heroes = await (await optional('./heroes.js', 'createHeroes'))?.(world, sim); // HEROES: self-registers its onFrame after the line above

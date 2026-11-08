@@ -32,18 +32,27 @@ export async function createEngine() {
   // optional modules: start fetching in parallel right away, await where needed
   const modelsP = import('./models.js').then(async (m) => { // GRAPHICS-B: preload PBR textures + cannon before spawning
     try { await m.preloadModels?.(THREE); } catch (err) { console.warn('[engine] preloadModels failed', err?.message); }
+    try { const r = await import('./roster.js'); const R = r.ROSTER || r.default; if (R) m.setRoster?.(R); } catch { /* roster.js optional */ }
     return m;
   });
   const charsP = import('./characters.js').then((c) => c.loadCharacters(null).then(() => c));
   modelsP.catch(() => {}); charsP.catch(() => {});
   const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  // Quality: ?q=low|med|high, else saved choice, else med on touch devices / high on desktop.
+  //  low: no shadows, no ground normal/AO maps, gradient env (no HDRI), pixel ratio 1
+  //  med: 1024 shadow map, full ground, HDRI, pixel ratio <= 1.5      high: 2048 shadows, pixel ratio <= 2
+  const QUALITIES = ['low', 'med', 'high'];
+  let savedQ = null; try { savedQ = localStorage.getItem('vanguard.quality'); } catch { /* private mode */ }
+  const touch = (navigator.maxTouchPoints || 0) > 0 || matchMedia?.('(pointer: coarse)')?.matches;
+  const QUALITY = QUALITIES.includes(params.get('q')) ? params.get('q') : QUALITIES.includes(savedQ) ? savedQ : (touch ? 'med' : 'high');
+  const DPR_CAP = { low: 1, med: 1.5, high: 2 }[QUALITY];
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, DPR_CAP));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   // Shadows: one PCF-soft directional map whose frustum tracks the visible ground (see fitShadow).
   // ?shadows=0 turns them off, ?shadows=1024 picks a smaller map.
-  const SHADOW = params.get('shadows') === '0' ? 0 : (+params.get('shadows') || 2048);
+  const SHADOW = params.get('shadows') === '0' ? 0 : (+params.get('shadows') || { low: 0, med: 1024, high: 2048 }[QUALITY]);
   renderer.shadowMap.enabled = SHADOW > 0;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   const SKY = 0xb7a58e; // hazy late-afternoon sky; fog matches so the horizon dissolves
@@ -108,7 +117,7 @@ export async function createEngine() {
     if (Math.abs(v - envNight) < 0.01) return;
     envNight = v; for (const m of envMats) applyEnv(m);
   }
-  if (params.get('hdri') !== 'none') (async () => {
+  if (params.get('hdri') !== 'none' && QUALITY !== 'low') (async () => {
     try {
       const { RGBELoader } = await import('three/addons/loaders/RGBELoader.js');
       const hdr = await new RGBELoader().loadAsync('assets/ph/hdri/' + (HDRI[params.get('hdri')] || HDRI.resting));
@@ -136,6 +145,8 @@ export async function createEngine() {
           queues: { barracks: [], factory: [] }, defenseTier: 0, enemyTier: 0,
           message: null, gameOver: null },
     lights: { hemi, sun },
+    quality: QUALITY, qualities: QUALITIES,
+    setQuality: (q) => { if (!QUALITIES.includes(q)) return; try { localStorage.setItem('vanguard.quality', q); } catch {} location.reload(); },
     envMap,
     camTarget: { x: BASES[0].x + 17, z: BASES[0].z + 1 }, // base sits left-center of the opening view
     view: 'tactical',
@@ -235,7 +246,7 @@ export async function createEngine() {
     const vv = window.visualViewport;
     W = Math.max(1, Math.round(vv ? vv.width : window.innerWidth));
     H = Math.max(1, Math.round(vv ? vv.height : window.innerHeight));
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    dpr = Math.min(window.devicePixelRatio || 1, DPR_CAP);
     renderer.setPixelRatio(dpr);
     renderer.setSize(W, H);
     overlay.width = Math.round(W * dpr); overlay.height = Math.round(H * dpr);
@@ -367,8 +378,11 @@ export async function createEngine() {
     Promise.all([load('diff.jpg'), load('nor_gl.jpg'), load('arm.jpg')]).then(([d, n, a]) => {
       prepTex(d, PH_TILE); prepTex(n, PH_TILE, false); prepTex(a, PH_TILE, false);
       measureTex(d.image);
-      groundMat.map = d; groundMat.normalMap = n; groundMat.normalScale.set(1, 1);
-      groundMat.aoMap = a; groundMat.aoMapIntensity = 0.8; groundMat.roughnessMap = a; groundMat.roughness = 1;
+      groundMat.map = d;
+      if (QUALITY !== 'low') {
+        groundMat.normalMap = n; groundMat.normalScale.set(1, 1);
+        groundMat.aoMap = a; groundMat.aoMapIntensity = 0.8; groundMat.roughnessMap = a; groundMat.roughness = 1;
+      }
       groundMat.needsUpdate = true;
     }).catch(() => { console.warn('[engine] PBR ground failed, using ground.jpg'); world.setGroundTexture('assets/ground.jpg'); });
   }
@@ -676,7 +690,7 @@ export async function createEngine() {
       try { g = makeSquad(team); } catch (err) { console.warn('[engine] squad build failed, primitive fallback:', err?.message); g = null; }
     }
     if (!g && models) {
-      try { g = models.makeModel(THREE, kind, team) || null; } catch (err) { console.warn('[engine] makeModel failed', kind, err?.message); g = null; }
+      try { g = models.makeModel(THREE, kind, team, world.factions?.[team]) || null; } catch (err) { console.warn('[engine] makeModel failed', kind, err?.message); g = null; }
     }
     if (!g) g = makePrimitive(kind, team);
     g.userData.kind = kind;
@@ -1010,7 +1024,7 @@ export async function createEngine() {
       updateCamera();
     }
 
-    world.clock.dt = Math.min(realDt, 0.05) * world.clock.speed;
+    world.clock.dt = Math.min(realDt, 0.25) * world.clock.speed; // sim substeps internally; slow frames don't slow the game
     world.clock.t += world.clock.dt;
     for (const fn of callbacks) {
       try { fn(world.clock.dt); } catch (err) { console.error('[engine] frame callback error', err); }
@@ -1033,7 +1047,7 @@ export async function createEngine() {
   world.setView('tactical');
   trackEnv(ground);
   if (models?.decorateBase) for (const [team, b] of BASES.entries()) {
-    try { const d = models.decorateBase(THREE, scene, team, b.x, b.z); d?.traverse?.((o) => { if (o.isMesh && !o.material?.transparent) { o.castShadow = true; o.receiveShadow = true; } }); trackEnv(d); }
+    try { const d = models.decorateBase(THREE, scene, team, b.x, b.z, world.factions?.[team]); d?.traverse?.((o) => { if (o.isMesh && !o.material?.transparent) { o.castShadow = true; o.receiveShadow = true; } }); trackEnv(d); }
     catch (err) { console.warn('[engine] decorateBase failed', err?.message); }
   }
 

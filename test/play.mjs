@@ -26,10 +26,10 @@ await page.evaluate(() => { const w = window.world; for (const e of w.entities) 
 await ff(60); await page.waitForTimeout(1500); await snap('fight'); console.log('fight', JSON.stringify(await st()));
 await page.evaluate(() => { window.world.setView('aerial'); }); await page.waitForTimeout(500); await snap('fight-aerial');
 // Enemy army / wave checks: track enemy combat units near the player CC (within 35u) every 250ms real time.
-await page.evaluate(() => { window.__wave = { first: null, max: 0 }; setInterval(() => { const w = window.world; const cc = w.entities.find(e => e.team === 0 && e.kind === 'cc'); if (!cc) return; const n = w.entities.filter(e => e.team === 1 && e.isUnit && e.dps > 0 && Math.hypot(e.x - cc.x, e.z - cc.z) < 35).length; if (n > 0 && window.__wave.first == null) window.__wave.first = Math.round(w.clock.t); if (n > window.__wave.max) window.__wave.max = n; }, 250); });
+await page.evaluate(() => { window.__wave = { first: null, max: 0, peakArmy: 0 }; setInterval(() => { const w = window.world; const army = w.entities.filter(e => e.team === 1 && e.isUnit && e.dps > 0).length; if (w.clock.t <= 480 && army > window.__wave.peakArmy) window.__wave.peakArmy = army; const cc = w.entities.find(e => e.team === 0 && e.kind === 'cc'); if (!cc) return; const n = w.entities.filter(e => e.team === 1 && e.isUnit && e.dps > 0 && Math.hypot(e.x - cc.x, e.z - cc.z) < 35).length; if (n > 0 && window.__wave.first == null) window.__wave.first = Math.round(w.clock.t); if (n > window.__wave.max) window.__wave.max = n; }, 250); });
 const ecombat = () => page.evaluate(() => window.world.entities.filter(e => e.team === 1 && e.isUnit && e.dps > 0).length);
 const tnow = () => page.evaluate(() => window.world.clock.t);
-await ff(480 - await tnow()); console.log('enemy at ~8 min', JSON.stringify({ t: Math.round(await tnow()), enemyCombat: await ecombat() }));
+await ff(480 - await tnow()); console.log('enemy at ~8 min', JSON.stringify({ t: Math.round(await tnow()), enemyCombat: await ecombat(), peak5to8min: await page.evaluate(() => window.__wave.peakArmy) }));
 await ff(600 - await tnow()); console.log('wave by ~10 min', JSON.stringify({ t: Math.round(await tnow()), ...(await page.evaluate(() => window.__wave)) }));
 await ff(100); console.log('after ~11 min', JSON.stringify(await st()));
 await page.evaluate(() => { const w = window.world; w.camTarget.x = -55; w.camTarget.z = 25; w.setView('tactical'); }); await page.waitForTimeout(800); await snap('base-late');

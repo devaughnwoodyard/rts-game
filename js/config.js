@@ -49,7 +49,7 @@ export const CONFIG = {
   // ---- Economy ----------------------------------------------------------
   economy: {
     startCrystals: 400,
-    enemyStartCrystals: 200,
+    enemyStartCrystals: 300,
     harvesterCarry: 40,
     gatherTime: 16,       // seconds at the crystal
     depositTime: 2,       // seconds at the cc
@@ -68,7 +68,7 @@ export const CONFIG = {
     waveGrowthPer: 150,     // +1 unit every N seconds of match time
     waveMax: 30,
     enemyTrickleBase: 30,   // crystals/min at t=0
-    enemyTrickleGrowth: 12, // +crystals/min per minute elapsed
+    enemyTrickleGrowth: 15, // +crystals/min per minute elapsed
     enemyMaxQueued: 2,      // enemy keeps ≤N items queued per building (leaves cash for defense tiers)
     enemyReserve: 150,      // enemy keeps this banked for defense tiers (world.defense.enemyReserve overrides)
     enemyHarvesters: 3,

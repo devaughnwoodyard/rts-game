@@ -22,19 +22,36 @@ export async function createEngine() {
   for (const c of [glCanvas, overlay]) c.style.touchAction = 'none';
   const octx = overlay.getContext('2d');
 
+  const params = new URLSearchParams(location.search);
   const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.shadowMap.enabled = false;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setClearColor(0x3a3029);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  // Shadows: one PCF-soft directional map whose frustum tracks the visible ground (see fitShadow).
+  // ?shadows=0 turns them off, ?shadows=1024 picks a smaller map.
+  const SHADOW = params.get('shadows') === '0' ? 0 : (+params.get('shadows') || 2048);
+  renderer.shadowMap.enabled = SHADOW > 0;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  const SKY = 0xb7a58e; // hazy late-afternoon sky; fog matches so the horizon dissolves
+  renderer.setClearColor(SKY);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x4a3e34);
-  scene.fog = new THREE.Fog(0x4a3e34, 220, 520);
+  scene.background = new THREE.Color(SKY);
+  scene.fog = new THREE.Fog(SKY, 220, 520);
 
-  const hemi = new THREE.HemisphereLight(0xfff0d8, 0x6b4a2b, 1.1);
-  const sun = new THREE.DirectionalLight(0xfff2e0, 1.7);
-  sun.position.set(-60, 120, 40);
-  scene.add(hemi, sun);
+  // fx.js day/night finds the first DirectionalLight + HemisphereLight by scene.traverse; keep exactly one of each.
+  const sun = new THREE.DirectionalLight(0xffc996, 2.9);   // warm low key light from the south-west
+  const SUN_DIR = new THREE.Vector3(-0.55, 0.62, 0.56).normalize(); // toward the sun (x west, z south)
+  sun.position.copy(SUN_DIR).multiplyScalar(120);
+  sun.castShadow = SHADOW > 0;
+  if (SHADOW) {
+    sun.shadow.mapSize.set(SHADOW, SHADOW);
+    sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.04; sun.shadow.radius = 2.5;
+    sun.shadow.camera.near = 1; sun.shadow.camera.far = 400;
+  }
+  const hemi = new THREE.HemisphereLight(0x9fbce6, 0x7a5434, 1.25); // cool sky fill, warm ground bounce
+  scene.add(sun, sun.target, hemi);
 
   const world = {
     THREE, scene, renderer, camera: null,
@@ -200,11 +217,33 @@ export async function createEngine() {
   }
   const groundTex = prepTex(new THREE.CanvasTexture(groundCanvas()));
   const groundMat = new THREE.MeshLambertMaterial({ map: groundTex });
+  // average linear luminance of the ground texture, so the detail layers below are brightness-neutral
+  const uAvg = { value: 0.35 };
+  function measureTex(img) {
+    try {
+      const c = document.createElement('canvas'); c.width = c.height = 32;
+      const g = c.getContext('2d'); g.drawImage(img, 0, 0, 32, 32);
+      const d = g.getImageData(0, 0, 32, 32).data; let sum = 0;
+      const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+      for (let i = 0; i < d.length; i += 4) sum += (lin(d[i]) + lin(d[i + 1]) + lin(d[i + 2])) / 3;
+      uAvg.value = Math.max(0.05, sum / (d.length / 4));
+    } catch { /* keep default */ }
+  }
+  measureTex(groundTex.image);
   groundMat.onBeforeCompile = (sh) => {
     sh.uniforms.uMapHalf = { value: new THREE.Vector2(world.map.w / 2, world.map.h / 2) };
+    sh.uniforms.uAvg = uAvg;
     sh.vertexShader = 'varying vec3 vGW;\n' + sh.vertexShader.replace('#include <begin_vertex>',
       '#include <begin_vertex>\n  vGW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = 'varying vec3 vGW;\nuniform vec2 uMapHalf;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+    sh.fragmentShader = 'varying vec3 vGW;\nuniform vec2 uMapHalf;\nuniform float uAvg;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+  { // detail breakup: the same texture at two rotated, larger scales multiplied in hides the 6x4 tiling
+    vec2 uvA = mat2(0.8, -0.6, 0.6, 0.8) * vMapUv * 0.31 + vec2(0.37, 0.11);
+    vec2 uvB = mat2(0.6, 0.8, -0.8, 0.6) * vMapUv * 0.087 + vec2(0.71, 0.53);
+    float la = dot(texture2D(map, uvA).rgb, vec3(0.3333));
+    float lb = dot(texture2D(map, uvB, 1.5).rgb, vec3(0.3333));
+    float k = clamp(mix(1.0, la / uAvg, 0.55) * mix(1.0, lb / uAvg, 0.9), 0.55, 1.5);
+    diffuseColor.rgb *= k;
+  }
   {
     vec2 q = max(abs(vGW.xz) - uMapHalf, 0.0);
     float d = length(q);
@@ -216,7 +255,7 @@ export async function createEngine() {
   }`);
   };
   const ground = new THREE.Mesh(new THREE.PlaneGeometry(world.map.w * EXT, world.map.h * EXT), groundMat);
-  ground.rotation.x = -Math.PI / 2; ground.name = 'ground';
+  ground.rotation.x = -Math.PI / 2; ground.name = 'ground'; ground.receiveShadow = true;
   scene.add(ground);
   { // playable boundary: thin dark dashed rectangle on the ground
     const w = world.map.w, h = world.map.h, th = 0.45, dash = 3, gap = 2.2, pos = [];
@@ -236,7 +275,7 @@ export async function createEngine() {
   }
   world.ground = ground;
   world.setGroundTexture = (url) => new THREE.TextureLoader().load(url, (t) => {
-    prepTex(t); groundMat.map = t; groundMat.needsUpdate = true;
+    prepTex(t); measureTex(t.image); groundMat.map = t; groundMat.needsUpdate = true;
   }, undefined, () => console.warn('[engine] ground texture failed to load, keeping procedural:', url));
   world.setGroundTexture('assets/ground.jpg');
 
@@ -267,6 +306,7 @@ export async function createEngine() {
         sm.rotation.set((r() - 0.5) * 0.5, r() * 6, (r() - 0.5) * 0.5); grp.add(sm);
       }
       grp.position.set(x, 0, z); grp.userData.kind = 'rock';
+      grp.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       scene.add(grp);
     }
   }
@@ -296,7 +336,7 @@ export async function createEngine() {
     return box(hx * 2, 0.3, hz * 2, PLATE, ox, 0.15, 0);
   }
 
-  world.makeMesh = (kind, team = -1) => {
+  const makePrimitive = (kind, team = -1) => {
     const tc = world.colors[team] ?? 0xbbbbbb;
     const T = mat(tc), Td = mat(shade(tc, 0.6)), S = mat(SLATE), D = mat(DARK), M = mat(METAL), L = mat(LIGHTSLATE);
     const LIGHT = mat(tc, { emissive: tc, emissiveIntensity: 0.7 }), GLOW = mat(0x39d8ff, { emissive: 0x1aa0cc });
@@ -472,6 +512,184 @@ export async function createEngine() {
   };
   const HEIGHT = { warden: 1.6, raider: 1.9, tank: 2.3, harvester: 2.4, cc: 12, barracks: 5.6, factory: 7.2, turret_mg: 2.2, turret_cannon: 3.6, artillery: 2.6, wall: 2.2, gate: 4.6, crystal: 3 };
   world.entityHeight = (e) => e.mesh?.userData?.height ?? HEIGHT[e.kind] ?? 2;
+
+  // ---------- Contact shadows (soft radial blob under every unit; grounds them even with shadows off) ----------
+  const blobTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    gr.addColorStop(0, 'rgba(0,0,0,0.85)'); gr.addColorStop(0.45, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+    const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const blobMat = new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: 0.7,
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const blobGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  function blob(r, x = 0, z = 0, sx = 1) {
+    const m = new THREE.Mesh(blobGeo, blobMat);
+    m.scale.set(r * 2 * sx, 1, r * 2); m.position.set(x, 0.035, z); m.renderOrder = 1;
+    m.name = 'contactShadow'; m.userData.noShadow = true; m.raycast = () => {};
+    return m;
+  }
+  world.contactShadow = blob;
+  const UNIT_BLOB = { warden: [1.3, 1], raider: [1.5, 1.3], tank: [2.0, 1.25], harvester: [1.8, 1.25] };
+  const RECEIVERS = new Set(['cc', 'barracks', 'factory', 'turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate']);
+  function decorate(g, kind) {
+    g.traverse((o) => {
+      if (!o.isMesh || o.userData.noShadow) return;
+      const m = o.material;
+      if (m && (m.transparent || (m.emissiveIntensity > 0.5 && kind === 'crystal'))) return;
+      o.castShadow = true;
+      if (RECEIVERS.has(kind)) o.receiveShadow = true;
+    });
+    if (UNIT_BLOB[kind] && !g.userData.squad && !g.getObjectByName('contactShadow')) g.add(blob(UNIT_BLOB[kind][0], 0, 0, UNIT_BLOB[kind][1]));
+    return g;
+  }
+
+  // ---------- Animated warden squads (js/characters.js) ----------
+  let chars = null;
+  try { chars = await import('./characters.js'); await chars.loadCharacters(world); }
+  catch (err) { console.warn('[engine] soldier.glb not loaded, using primitive wardens:', err?.message || err); chars = null; }
+  const squads = new Set();
+  const SQUAD_POS = [[0.62, 0], [-0.44, 0.64], [-0.44, -0.64]];
+  function playSquad(sq, name, fade = 0.2) {
+    sq.clip = name;
+    sq.soldiers.forEach((s, i) => s.play(name, fade, { offset: sq.offsets[i] + Math.random() * 0.15 }));
+  }
+  function makeSquad(team) {
+    const g = new THREE.Group(), inner = new THREE.Group();
+    inner.name = 'squad'; g.add(inner);
+    const sq = { group: g, inner, soldiers: [], offsets: [], clip: null, forced: null, dying: 0, last: null, speed: 0, seen: false };
+    for (const [x, z] of SQUAD_POS) {
+      const s = chars.makeSoldier(team);
+      s.root.position.set(x, 0, z); s.root.rotation.y = (Math.random() - 0.5) * 0.3;
+      s.delay = Math.random() * 0.35;
+      inner.add(s.root, blob(0.5, x, z));
+      sq.soldiers.push(s); sq.offsets.push(Math.random());
+    }
+    playSquad(sq, 'idle', 0);
+    g.userData.squad = sq;
+    g.userData.anim = { play: (name) => { sq.forced = name; if (sq.clip !== name) playSquad(sq, name); }, release: () => { sq.forced = null; } };
+    g.userData.height = chars.SOLDIER_HEIGHT + 0.15;
+    squads.add(sq);
+    return g;
+  }
+
+  world.makeMesh = (kind, team = -1) => {
+    let g = null;
+    if (kind === 'warden' && chars) {
+      try { g = makeSquad(team); } catch (err) { console.warn('[engine] squad build failed, primitive fallback:', err?.message); g = null; }
+    }
+    if (!g) g = makePrimitive(kind, team);
+    g.userData.kind = kind;
+    g.userData.height ??= HEIGHT[kind] ?? 2;
+    return decorate(g, kind);
+  };
+
+  // A dead warden: sim has already pulled its mesh from the scene; put it back at the last position,
+  // play 'die' once (each soldier slightly staggered), fade from 4s and drop it at 6s.
+  world.bus.addEventListener('died', (ev) => {
+    const e = ev.detail?.entity, sq = e?.mesh?.userData?.squad;
+    if (!sq || sq.dying) return;
+    const g = sq.group;
+    if (Number.isFinite(e.x)) g.position.set(e.x, 0, e.z);
+    if (Number.isFinite(e.rot)) g.rotation.y = e.rot;
+    g.userData.entity = null;
+    if (!g.parent) scene.add(g);
+    sq.dying = 1e-4; sq.forced = 'die'; sq.inner.visible = true;
+  });
+  const DIE_FADE = 4, DIE_END = 6;
+  function startFade(sq) {
+    sq.fadeMats = [];
+    sq.group.traverse((o) => {
+      if (!o.isMesh) return;
+      const m = o.material.clone();
+      m.onBeforeCompile = o.material.onBeforeCompile;
+      m.transparent = true; m.depthWrite = o.name !== 'contactShadow' ? true : false;
+      m.userData.baseOpacity = o.material.opacity;
+      o.material = m; o.castShadow = false; sq.fadeMats.push(m);
+    });
+  }
+
+  const _frustum = new THREE.Frustum(), _pm = new THREE.Matrix4(), _sph = new THREE.Sphere(new THREE.Vector3(), 2.6);
+  function updateSquads(dt) {
+    if (!squads.size) return;
+    const cam = world.camera;
+    _pm.multiplyMatrices(cam.projectionMatrix, cam.matrixWorldInverse);
+    _frustum.setFromProjectionMatrix(_pm);
+    for (const sq of squads) {
+      const g = sq.group, p = g.position;
+      if (sq.dying) {
+        sq.dying += dt;
+        for (const s of sq.soldiers) if (s.current !== 'die' && sq.dying >= s.delay) { s.play('die', 0.15); s.actions.die.timeScale = 1; }
+        if (sq.dying > DIE_FADE && !sq.fadeMats) startFade(sq);
+        if (sq.fadeMats) {
+          const f = Math.max(0, 1 - (sq.dying - DIE_FADE) / (DIE_END - DIE_FADE));
+          for (const m of sq.fadeMats) m.opacity = m.userData.baseOpacity * f;
+        }
+        if (sq.dying >= DIE_END) {
+          g.parent?.remove(g); squads.delete(sq);
+          for (const m of sq.fadeMats || []) m.dispose();
+          for (const s of sq.soldiers) s.mixer.stopAllAction();
+          continue;
+        }
+      } else if (!g.parent) { // not yet added by sim, or removed without a died event
+        if (sq.seen) { squads.delete(sq); for (const s of sq.soldiers) s.mixer.stopAllAction(); }
+        continue;
+      } else {
+        sq.seen = true;
+        const e = g.userData.entity;
+        if (sq.last && dt > 0) {
+          const v = Math.hypot(p.x - sq.last.x, p.z - sq.last.z) / dt;
+          sq.speed += (Math.min(v, 30) - sq.speed) * Math.min(1, dt * 8);
+        }
+        sq.last = sq.last || {}; sq.last.x = p.x; sq.last.z = p.z;
+        let want = 'idle';
+        if (sq.forced) want = sq.forced;
+        else if (sq.speed > 0.5 || e?.state === 'move') want = 'walk';
+        else if (e?.state === 'attack' && e.target) want = 'fire';
+        if (want !== sq.clip) playSquad(sq, want);
+        for (const s of sq.soldiers) {
+          const a = s.actions[sq.clip];
+          if (!a) continue;
+          if (sq.clip === 'walk') a.timeScale = sq.forced ? 1 : Math.max(0.9, Math.min(2.4, sq.speed / chars.WALK_SPEED));
+          else if (sq.clip === 'fire') a.timeScale = sq.forced ? 1 : Math.max(0.7, Math.min(1.6, a.getClip().duration / (e?.fireRate || 1.1)));
+          else a.timeScale = 1;
+        }
+      }
+      _sph.center.set(p.x, 0.9, p.z);
+      const vis = _frustum.intersectsSphere(_sph);
+      sq.inner.visible = vis;
+      if (vis) for (const s of sq.soldiers) s.mixer.update(dt);
+    }
+  }
+  world.squadCount = () => squads.size;
+
+  // ---------- Shadow frustum: fit the sun's ortho camera to the visible ground, recentred on camTarget ----------
+  const _lp = new THREE.Vector3();
+  let shadowFit = '';
+  function fitShadow() {
+    if (!SHADOW) return;
+    const t = world.camTarget;
+    sun.target.position.set(t.x, 0, t.z);
+    sun.position.set(t.x + SUN_DIR.x * 150, SUN_DIR.y * 150, t.z + SUN_DIR.z * 150);
+    sun.updateMatrixWorld(); sun.target.updateMatrixWorld();
+    const sc = sun.shadow.camera;
+    sc.position.copy(sun.position); sc.lookAt(sun.target.position); sc.updateMatrixWorld();
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const c of world.viewCorners()) for (const y of [0, 6]) {
+      _lp.set(c.x, y, c.z).applyMatrix4(sc.matrixWorldInverse);
+      x0 = Math.min(x0, _lp.x); x1 = Math.max(x1, _lp.x); y0 = Math.min(y0, _lp.y); y1 = Math.max(y1, _lp.y);
+    }
+    const MAXH = 80, q = 4; // clamp so the map keeps resolution; quantise to avoid resizing every pan
+    const cl = (v) => Math.max(-MAXH, Math.min(MAXH, v));
+    x0 = Math.floor(cl(x0 - 4) / q) * q; x1 = Math.ceil(cl(x1 + 4) / q) * q;
+    y0 = Math.floor(cl(y0 - 4) / q) * q; y1 = Math.ceil(cl(y1 + 6) / q) * q;
+    const key = x0 + ',' + x1 + ',' + y0 + ',' + y1;
+    if (key !== shadowFit) {
+      shadowFit = key;
+      sc.left = x0; sc.right = x1; sc.bottom = y0; sc.top = y1; sc.updateProjectionMatrix();
+    }
+  }
 
   // ---------- Input ----------
   const input = world.input;
@@ -698,6 +916,8 @@ export async function createEngine() {
     }
     seen.tap = input.tap; seen.command = input.command; seen.drag = input.drag;
     updateCamera();
+    try { updateSquads(world.clock.dt); } catch (err) { console.error('[engine] squad anim error', err); }
+    fitShadow();
     renderer.render(scene, world.camera);
     drawOverlay();
     requestAnimationFrame(frame);
@@ -723,6 +943,27 @@ export async function createEngine() {
       if (k === 'tank' || k === 'warden') input.selected.add(ent);
     });
     world.jumpTo(-4, 4);
+  }
+
+  // ---------- Gallery (?gallery=1): 3 player + 3 enemy warden squads in front of the player base ----------
+  // Not sim entities (pure scene props), so the sim never targets them. Cycles clips every 2s;
+  // world.gallery.show(name) pins one clip (used by tools/gallery-shots.mjs).
+  if (params.get('gallery') === '1') {
+    const B = BASES[0], cx = B.x + 31, cz = B.z + 3;
+    const lineup = [];
+    for (let i = 0; i < 3; i++) for (const team of [0, 1]) {
+      const g = world.makeMesh('warden', team);
+      g.position.set(cx + (team ? 5 : -5), 0, cz - 6 + i * 6);
+      g.rotation.y = team ? Math.PI : 0;
+      scene.add(g); lineup.push(g);
+    }
+    const order = ['idle', 'walk', 'fire', 'reload', 'melee', 'die'];
+    let k = 0, pinned = null;
+    const showAll = (n) => lineup.forEach((g) => g.userData.anim?.play(n));
+    showAll(order[0]);
+    const iv = setInterval(() => { if (!pinned) showAll(order[k = (k + 1) % order.length]); }, 2000);
+    world.gallery = { lineup, show: (n) => { pinned = n; showAll(n); }, cycle: () => { pinned = null; }, stop: () => clearInterval(iv) };
+    world.jumpTo(cx - 9, cz);
   }
 
   requestAnimationFrame(frame);

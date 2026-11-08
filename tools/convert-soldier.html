@@ -47,7 +47,7 @@ window.convert = async () => {
   const bi = (n) => KEEP.indexOf('mixamorig' + n);
   const P = (n) => rig.getObjectByName('mixamorig' + n).getWorldPosition(new THREE.Vector3());
 
-  const armor = [], visor = [];
+  const armor = [];
   // place geometry g (authored along +Y, centred) between points a..b, on bone `bone`
   function finish(g, bone, col, list = armor) {
     g.deleteAttribute('uv');
@@ -109,7 +109,7 @@ window.convert = async () => {
   blk('Head', helm, [0, 9, 1.5], C.team);
   blk('Head', RB(30, 6, 26, 2.5), [0, 1.5, 0], C.teamDk);              // jaw/collar ring
   blk('Head', RB(5, 8, 22, 2), [0, 22, 0], C.teamLt);                  // crest
-  const vis = RB(22, 8.5, 9, 3.5); blk('Head', vis, [0, 9.5, 10.5], [0.02, 0.03, 0.04, 0], { list: visor });
+  const vis = RB(22, 8.5, 9, 3.5); blk('Head', vis, [0, 9.5, 10.5], [0.02, 0.03, 0.04, 0], { list: armor });
   // ---- arms
   for (const s of ['Left', 'Right']) {
     const sx = s === 'Left' ? 1 : -1;
@@ -167,12 +167,11 @@ window.convert = async () => {
   rp(RB(4, 4, 9, 1), 0, 11, 6, C.glow);                          // scope glow
 
   // ---- merge + skin
-  const armorG = mergeGeometries(armor, false), visorG = mergeGeometries(visor, false);
-  const geom = mergeVertices(mergeGeometries([armorG, visorG], true), 1e-3);
-  log.push('groups ' + JSON.stringify(geom.groups));
+  // one primitive / one draw call per soldier: the visor is told apart in the runtime shader by its
+  // near-black vertex colour (glossy + emissive), see js/characters.js
+  const geom = mergeVertices(mergeGeometries(armor, false), 1e-3);
   const matA = new THREE.MeshStandardMaterial({ name: 'armor', vertexColors: true, metalness: 0.4, roughness: 0.5 });
-  const matV = new THREE.MeshStandardMaterial({ name: 'visor', color: 0x05080c, metalness: 0.9, roughness: 0.15, emissive: 0x0b3a48 });
-  const mesh = new THREE.SkinnedMesh(geom, [matA, matV]);
+  const mesh = new THREE.SkinnedMesh(geom, matA);
   mesh.name = 'body';
   rig.add(mesh);
   rig.updateMatrixWorld(true);

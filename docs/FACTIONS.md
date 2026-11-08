@@ -9,12 +9,12 @@ Industrial all-rounder. Area denial + fortification instead of artillery: Sapper
 
 | Unit | Role | Cost | HP | Armor | EHP | Speed | Range | DPS | Shot | Abilities |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Ironjacket Trooper** | infantry | 70 | 128 | 15% | 151 | 7.2 | 10 | 8.2 | minimissile | Frag Grenade*, Dig In*, Flare*, Brace (p) |
-| **Bulldog APC** | light | 100 | 219 | 20% | 274 | 11.5 | 10 | 10.0 | minimissile | Smoke Screen*, Ram*, Overdrive*, Repair Rig (p) |
-| **Anvil Heavy Tank** | heavy | 220 (+20) | 510 | 30% | 729 | 5.8 | 13 | 20.0 | slug | Brace Hull*, AP Slug*, Composite Plating (p), Spotter Link (p) |
-| **Crawler Hauler** | harvester | 100 | 380 | 25% | 507 | 6.4 | 0 | 0.0 | bullet | Emergency Plating*, Afterburner*, Distress Beacon*, Reinforced Frame (p) |
-| **Sapper Crew** | special | 120 (+10) | 137 | 20% | 171 | 7.2 | 8 | 8.2 | bullet | Lay Minefield*, Claymore*, Demolition Charge*, Mine Sweep (p) |
-| **Skyguard Flak Truck** | aa | 130 (+10) | 292 | 20% | 365 | 8 | 16 | 18.2 | bullet | Flak Burst*, Radar Sweep*, Deploy Struts*, Tracking Radar (p) |
+| **Ironjacket Trooper** | infantry | 70 | 139 | 15% | 164 | 7.2 | 10 | 8.9 | minimissile | Frag Grenade*, Dig In*, Flare*, Brace (p) |
+| **Bulldog APC** | light | 100 | 238 | 20% | 298 | 11.5 | 10 | 10.9 | minimissile | Smoke Screen*, Ram*, Overdrive*, Repair Rig (p) |
+| **Anvil Heavy Tank** | heavy | 220 (+20) | 555 | 30% | 793 | 5.8 | 13 | 21.8 | slug | Brace Hull*, AP Slug*, Composite Plating (p), Spotter Link (p) |
+| **Crawler Hauler** | harvester | 100 | 380 | 25% | 507 | 7 | 0 | 0.0 | null | Emergency Plating*, Afterburner*, Distress Beacon*, Reinforced Frame (p) |
+| **Sapper Crew** | special | 120 (+10) | 149 | 20% | 186 | 7.2 | 8 | 8.9 | bullet | Lay Minefield*, Claymore*, Demolition Charge*, Mine Sweep (p) |
+| **Skyguard Flak Truck** | aa | 130 (+10) | 317 | 20% | 396 | 8 | 16 | 19.8 | bullet | Flak Burst*, Radar Sweep*, Deploy Struts*, Tracking Radar (p) |
 
 <details><summary>Ability details</summary>
 
@@ -33,12 +33,12 @@ STURDIEST TANKS: magma-coated armor, burn-on-hit, molten regen out of combat. Ow
 
 | Unit | Role | Cost | HP | Armor | EHP | Speed | Range | DPS | Shot | Abilities |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Cinder Brute** | infantry | 65 | 111 | 15% | 131 | 6.4 | 6 | 11.1 | slug | Flame Burst*, Ember Rush*, Ignite (p), Molten Skin (p) |
-| **Scorch Crawler** | light | 100 | 223 | 25% | 297 | 9 | 7 | 12.1 | slug | Napalm Sweep*, Oil Slick*, Heat Haze*, Ignite (p) |
-| **Magma Juggernaut** | heavy | 260 (+30) | 705 | 45% | 1282 | 4.8 | 11 | 18.6 | slug | Magma Coat (p), Molten Ram*, Slag Spray*, Hardened Crust* |
-| **Slag Hauler** | harvester | 100 | 420 | 30% | 600 | 5.6 | 0 | 0.0 | bullet | Magma Vent*, Harden*, Lava Trail*, Molten Skin (p) |
-| **Crucible Siege Mortar** | special, crew 4 | 190 (+25) | 334 | 30% | 477 | 4.2 | 24 | 13.0 | ironball | Slag Shell*, Ricochet Shot*, Bracing (p), Red-Hot Load* |
-| **Ash Cannon** | aa, crew 3 | 130 (+10) | 352 | 30% | 503 | 5.6 | 15 | 18.6 | bullet | Ash Cloud*, Pumice Shrapnel*, Anchor Spikes*, Molten Skin (p) |
+| **Cinder Brute** | infantry | 65 | 120 | 15% | 141 | 6.4 | 7 | 12.0 | slug | Flame Burst*, Ember Rush*, Ignite (p), Molten Skin (p) |
+| **Scorch Crawler** | light | 100 | 240 | 25% | 320 | 9 | 7 | 13.0 | slug | Napalm Sweep*, Oil Slick*, Heat Haze*, Ignite (p) |
+| **Magma Juggernaut** | heavy | 260 (+30) | 761 | 45% | 1384 | 4.8 | 11 | 20.0 | slug | Magma Coat (p), Molten Ram*, Slag Spray*, Hardened Crust* |
+| **Slag Hauler** | harvester | 100 | 420 | 30% | 600 | 6.6 | 0 | 0.0 | null | Magma Vent*, Harden*, Lava Trail*, Molten Skin (p) |
+| **Crucible Siege Mortar** | special, crew 4 | 190 (+25) | 361 | 30% | 516 | 4.2 | 24 | 14.0 | ironball | Slag Shell*, Ricochet Shot*, Bracing (p), Red-Hot Load* |
+| **Ash Cannon** | aa, crew 3 | 130 (+10) | 381 | 30% | 544 | 5.6 | 15 | 20.0 | bullet | Ash Cloud*, Pumice Shrapnel*, Anchor Spikes*, Molten Skin (p) |
 
 <details><summary>Ability details</summary>
 
@@ -57,12 +57,12 @@ STRONGEST AIR (Sunwing heavy flyer + Dawnglider swarms), Deepmaw BURROWER (hidde
 
 | Unit | Role | Cost | HP | Armor | EHP | Speed | Range | DPS | Shot | Abilities |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Grove Archer** | infantry | 55 | 91 | 0% | 91 | 7.6 | 12 | 10.6 | arrow | Mend*, Monsoon*, Photosynthesis (p), Thorn Arrows (p) |
-| **Thornback Lancer** | light | 95 | 211 | 5% | 222 | 11.5 | 11 | 13.4 | spear | Pounce*, Piercing Spear*, Flash Flood*, Barkskin (p) |
-| **Sunwing** | heavy (air) | 240 (+40) | 537 | 15% | 632 | 10 | 12 | 24.9 | laser | Solar Beam*, Sun Dive*, Radiant Plumage (p), Sunburst* |
-| **Rootback Gatherer** | harvester | 100 | 280 | 5% | 295 | 7.2 | 0 | 0.0 | bullet | Tunnel Escape*, Surface*, Root Shield*, Photosynthesis (p) |
-| **Deepmaw Burrower** | special | 160 (+20) | 326 | 15% | 384 | 8 | 6 | 17.3 | spear | Burrow*, Erupt*, Tremor Sense (p), Root Network (p) |
-| **Dawnglider Flock** | air (air) | 80 (+10) | 125 | 0% | 125 | 14 | 9 | 12.5 | arrow | Swarm Swoop*, Updraft*, Feather Storm*, Flock Instinct (p) |
+| **Grove Archer** | infantry | 55 | 98 | 0% | 98 | 7.6 | 12 | 11.3 | arrow | Mend*, Monsoon*, Photosynthesis (p), Thorn Arrows (p) |
+| **Thornback Lancer** | light | 95 | 226 | 5% | 238 | 11.5 | 11 | 14.4 | spear | Pounce*, Piercing Spear*, Flash Flood*, Barkskin (p) |
+| **Sunwing** | heavy (air) | 240 (+40) | 576 | 15% | 678 | 10 | 12 | 26.7 | laser | Solar Beam*, Sun Dive*, Radiant Plumage (p), Sunburst* |
+| **Rootback Gatherer** | harvester | 100 | 280 | 5% | 295 | 7.2 | 0 | 0.0 | null | Tunnel Escape*, Surface*, Root Shield*, Photosynthesis (p) |
+| **Deepmaw Burrower** | special | 160 (+20) | 350 | 15% | 412 | 8 | 6 | 18.5 | spear | Burrow*, Erupt*, Tremor Sense (p), Root Network (p) |
+| **Dawnglider Flock** | air (air) | 80 (+10) | 134 | 0% | 134 | 14 | 9 | 13.4 | arrow | Swarm Swoop*, Updraft*, Feather Storm*, Flock Instinct (p) |
 
 <details><summary>Ability details</summary>
 
@@ -81,12 +81,12 @@ QUICKEST: land-yachts and sail-cruisers, hit-and-run, chain lightning, speed buf
 
 | Unit | Role | Cost | HP | Armor | EHP | Speed | Range | DPS | Shot | Abilities |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Gale Skirmisher** | infantry | 55 | 104 | 0% | 104 | 10.5 | 10 | 17.2 | lightning | Tailwind*, Shock Javelin*, Static Charge (p), Windstep* |
-| **Dune Yacht** | light | 85 | 221 | 0% | 221 | 18 | 9 | 22.1 | bullet | Full Sail*, Arc Lance*, Hit and Run (p), Jib Turn* |
-| **Thunderhead Sail-Cruiser** | heavy | 200 (+20) | 541 | 10% | 601 | 13 | 14 | 31.9 | lightning | Chain Lightning*, Storm Front*, Capacitor Bank (p), Gust Ram* |
-| **Sand Skimmer** | harvester | 100 | 240 | 0% | 240 | 10.5 | 0 | 0.0 | bullet | Run Before the Wind*, Static Discharge*, Dust Mirage*, Featherweight (p) |
-| **Tempest Caller** | special | 130 (+15) | 160 | 0% | 160 | 9 | 14 | 14.8 | lightning | Lightning Storm*, Overcharge*, Dust Devil*, Static Field (p) |
-| **Kitewing Skyraider** | air (air) | 110 (+15) | 197 | 0% | 197 | 16 | 10 | 22.1 | lightning | Lightning Strike*, Downdraft*, Jetstream*, Evasive Rigging (p) |
+| **Gale Skirmisher** | infantry | 55 | 83 | 0% | 83 | 10.5 | 10 | 13.7 | lightning | Tailwind*, Shock Javelin*, Static Charge (p), Windstep* |
+| **Dune Yacht** | light | 85 | 176 | 0% | 176 | 18 | 9 | 17.6 | bullet | Full Sail*, Arc Lance*, Hit and Run (p), Jib Turn* |
+| **Thunderhead Sail-Cruiser** | heavy | 200 (+20) | 431 | 10% | 479 | 13 | 14 | 25.5 | lightning | Chain Lightning*, Storm Front*, Capacitor Bank (p), Gust Ram* |
+| **Sand Skimmer** | harvester | 100 | 240 | 0% | 240 | 8 | 0 | 0.0 | null | Run Before the Wind*, Static Discharge*, Dust Mirage*, Featherweight (p) |
+| **Tempest Caller** | special | 130 (+15) | 127 | 0% | 127 | 9 | 14 | 11.8 | lightning | Lightning Storm*, Overcharge*, Dust Devil*, Static Field (p) |
+| **Kitewing Skyraider** | air (air) | 110 (+15) | 157 | 0% | 157 | 16 | 10 | 15.7 | lightning | Lightning Strike*, Downdraft*, Jetstream*, Evasive Rigging (p) |
 
 <details><summary>Ability details</summary>
 
@@ -94,7 +94,7 @@ QUICKEST: land-yachts and sail-cruisers, hit-and-run, chain lightning, speed buf
 - **Dune Yacht**: *Full Sail*: +60% speed for 4s. Cooldown 14s. / *Arc Lance*: Lightning 30 dmg, chains to 3 more (x0.75 each). Cooldown 12s. / *Hit and Run*: +35% speed for 2s after attacking. / *Jib Turn*: Leap 10u away from the nearest enemy; -30% dmg taken for 2s. Cooldown 12s.
 - **Thunderhead Sail-Cruiser**: *Chain Lightning*: Lightning 50 dmg, chains to 4 more (x0.75 each), 0.3s stun. Cooldown 16s. / *Storm Front*: 15 dmg r7; -40% speed 3s. Cooldown 18s. / *Capacitor Bank*: +15% dps above 70% hp. / *Gust Ram*: Charge the target: 40 dmg r3, knockback. Cooldown 14s.
 - **Sand Skimmer**: *Run Before the Wind*: +70% speed for 5s. Cooldown 20s. / *Static Discharge*: 30 dmg r6; 1s stun. Cooldown 22s. / *Dust Mirage*: -50% dmg taken for 4s. Cooldown 26s. / *Featherweight*: +15% speed out of combat.
-- **Tempest Caller**: *Lightning Storm*: Field r6 for 5s: 12 dps to enemies (air+ground). Cooldown 20s. / *Overcharge*: Allies r10: +30% speed, +25% dps for 5s. Cooldown 22s. / *Dust Devil*: Summon 2 dustdevils for 10s. Cooldown 25s. / *Static Field*: Enemies within 8 are slowed 15%.
+- **Tempest Caller**: *Lightning Storm*: Field r6 for 5s: 10 dps to enemies (air+ground). Cooldown 20s. / *Overcharge*: Allies r10: +30% speed, +25% dps for 5s. Cooldown 22s. / *Dust Devil*: Summon 2 dustdevils for 10s. Cooldown 25s. / *Static Field*: Enemies within 8 are slowed 15%.
 - **Kitewing Skyraider**: *Lightning Strike*: 45 dmg; 0.5s stun. Cooldown 12s. / *Downdraft*: 15 dmg r6; knockback. Cooldown 16s. / *Jetstream*: Allied flyers r10: +50% speed for 4s. Cooldown 18s. / *Evasive Rigging*: -15% dmg taken while moving.
 
 </details>

@@ -46,7 +46,9 @@ function match(factions, s, park = []) {
   for (const t of park) { if (sim.ai[t]) { sim.ai[t].alive = false; sim.ai[t].nextWave = 1e9; } }
   // player team 0 never commands; if parked we also keep its units home (they only defend)
   const dmg = [0, 0, 0, 0], dmgTo = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
-  const built = [{}, {}, {}, {}];
+  const built = [{}, {}, {}, {}], byKind = [{}, {}, {}, {}], lost = [{}, {}, {}, {}];
+  bus.addEventListener('hit', (ev) => { const d = ev.detail; const a = d.attacker; if (a && a.team >= 0 && d.victim?.team !== a.team) byKind[a.team][a.kind] = Math.round((byKind[a.team][a.kind] || 0) + d.dmg); });
+  bus.addEventListener('died', (ev) => { const e = ev.detail.entity; if (e?.team >= 0) lost[e.team][e.kind] = (lost[e.team][e.kind] || 0) + 1; });
   bus.addEventListener('hit', (ev) => { const d = ev.detail; const a = d.attacker?.team, v = d.victim?.team; if (a >= 0 && v >= 0 && a !== v) { dmg[a] += d.dmg; dmgTo[a][v] += d.dmg; } });
   bus.addEventListener('built', (ev) => { const e = ev.detail.entity; if (e?.isUnit) built[e.team][e.kind] = (built[e.team][e.kind] || 0) + 1; });
   const dead = [null, null, null, null];
@@ -62,7 +64,7 @@ function match(factions, s, park = []) {
   }
   const army = [0, 0, 0, 0];
   for (const e of world.entities) if (e.isUnit && e.state !== 'dead' && e.team >= 0 && ROSTER[e.kind] && !ROSTER[e.kind].harvester) army[e.team] += ROSTER[e.kind].value * e.hp / e.hpMax;
-  return { factions, dead, dmg: dmg.map(Math.round), dmgTo: dmgTo.map(r => r.map(Math.round)), army: army.map(Math.round), built, t: +(t / 60).toFixed(1) };
+  return { factions, dead, dmg: dmg.map(Math.round), dmgTo: dmgTo.map(r => r.map(Math.round)), army: army.map(Math.round), built, byKind, lost, t: +(t / 60).toFixed(1) };
 }
 
 // 1v1 on teams 1 (NE) and 3 (SE): they are each other's nearest enemy cc. Teams 0/2 parked.
@@ -94,7 +96,7 @@ if (args.duel) {
   const [a, b] = String(args.duel).split(',');
   const r = duelRate(a, b, true);
   console.log(`${a} vs ${b}: ${(r * 100).toFixed(0)}% margin ${(lastMargin * 100).toFixed(1)}`);
-  if (args.built) { const x = duel(a, b, 1000); console.log(JSON.stringify(x.r.built[1]), JSON.stringify(x.r.built[3])); }
+  if (args.built) { const x = duel(a, b, 1000); for (const k of [1, 3]) console.log(`team ${k} built`, JSON.stringify(x.r.built[k]), '\n  dmg by kind', JSON.stringify(x.r.byKind[k]), '\n  lost', JSON.stringify(x.r.lost[k])); }
 } else if (args.matrix) {
   const M = {};
   for (const a of FACS) { M[a] = {}; M[a][a] = 0.5; }

@@ -9,7 +9,9 @@
 // edge distance <= range, shot dmg = dps*cooldown*RPS mul, splash, minRange, stun/root/dmgMul status, armor,
 // air only hittable by canHitAir, burrowed/stealth untargetable unless detected) plus the REAL abilities.js
 // (AI autocast for both sides). Fights: two equal-cost armies 70u apart at random spots, attack-move, 150s cap.
-// Winner = more surviving cost-weighted hp.
+// Winner = more surviving cost-weighted hp. Equal cost uses value = primary + 1.5 x secondary.
+// NOTE: per-faction TUNING scalars are now set from LIVE-SIM matches (tools/livematch.mjs: real sim + economy + AI),
+// because economy/speed effects dominate full games; use --tune here only for unit-level checks.
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';

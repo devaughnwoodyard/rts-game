@@ -31,6 +31,9 @@ export function createHud(world, sim) {
     <span class="v-stat"><small>T</small><span data-k="time">00:00</span></span>
     <span class="v-stat"><i class="v-phase" data-k="phase"></i><small data-k="phaseTxt">Day</small></span>`;
   const q = (k) => stats.querySelector(`[data-k="${k}"]`);
+  const debug = new URLSearchParams(location.search).get('debug') === '1';
+  let dbg = null, dbgFrames = 0, dbgT0 = performance.now();
+  if (debug) { dbg = el('span', 'v-stat v-dbg', '<small>FPS</small><span>--</span><small>E</small><span>0</span>'); stats.append(dbg); }
   const btnDef = el('button', 'v-def', 'Defenses');
   const btnView = el('button', '', 'Tactical');
   const btnSpeed = el('button', '', '1x');
@@ -266,6 +269,16 @@ export function createHud(world, sim) {
       over.classList.remove('win', 'lose'); over.classList.add(go);
       setText(over.querySelector('h2'), go === 'win' ? 'VICTORY' : 'DEFEAT');
       setText(over.querySelector('.sub'), go === 'win' ? 'Enemy command destroyed' : 'Your command center has fallen');
+    }
+
+    if (dbg) {
+      dbgFrames++;
+      if (now - dbgT0 >= 500) {
+        const sp = dbg.querySelectorAll('span');
+        setText(sp[0], String(Math.round(dbgFrames * 1000 / (now - dbgT0))));
+        setText(sp[1], String(world.entities.length));
+        dbgFrames = 0; dbgT0 = now;
+      }
     }
 
     miniAcc += 1;

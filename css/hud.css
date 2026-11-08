@@ -40,7 +40,7 @@ html, body {
   position: absolute; top: calc(6px + var(--sat)); left: calc(8px + var(--sal)); right: calc(8px + var(--sar));
   display: flex; align-items: center; gap: 6px; pointer-events: none;
 }
-.v-stats { display: flex; align-items: center; gap: 14px; height: 38px; padding: 0 12px; white-space: nowrap; }
+.v-stats { display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 12px; white-space: nowrap; }
 .v-stat { display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; font-weight: 600; }
 .v-stat small { color: var(--dim); font-weight: 400; font-size: 12px; }
 .v-ico { width: 10px; height: 14px; display: inline-block; }
@@ -48,13 +48,15 @@ html, body {
 .v-phase { width: 14px; height: 14px; border-radius: 50%; background: #ffcf5a; box-shadow: 0 0 8px #ffcf5a; }
 .v-phase.night { background: transparent; box-shadow: inset -4px -2px 0 0 #c9d6ff; transform: rotate(-20deg); }
 .v-sp { flex: 1; }
-.v-top button { height: 38px; min-width: 56px; font-weight: 600; }
+.v-top button { height: 44px; min-width: 56px; font-weight: 600; }
+.v-dbg { color: #9fe8a0; font-size: 12px; }
+.v-dbg small { font-size: 10px; }
 .v-top .v-def { color: #ffd27a; }
 .v-full { color: #ff7a7a !important; }
 
 /* ---- Banner ---- */
 .v-banner {
-  position: absolute; top: calc(52px + var(--sat)); left: 50%; transform: translateX(-50%);
+  position: absolute; top: calc(58px + var(--sat)); left: 50%; transform: translateX(-50%);
   padding: 6px 16px; font-weight: 600; white-space: nowrap; max-width: 70vw; overflow: hidden; text-overflow: ellipsis;
   opacity: 0; transition: opacity 0.25s;
 }
@@ -98,7 +100,7 @@ html, body {
 
 /* ---- Defense sheet ---- */
 .v-sheet {
-  position: absolute; right: calc(8px + var(--sar)); top: calc(52px + var(--sat));
+  position: absolute; right: calc(8px + var(--sar)); top: calc(58px + var(--sat));
   width: 250px; padding: 10px 12px; display: none; flex-direction: column; gap: 6px; pointer-events: none;
 }
 .v-sheet.on { display: flex; }

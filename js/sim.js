@@ -280,12 +280,30 @@ export function createSim(world) {
       sx += -dz * sgn * w; sz += dx * sgn * w;
     };
     const obs = world.obstacles || [];
+    // Team-tagged obstacles (gates) only block the other team; untagged block everyone.
     for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (o.team == null || o.team !== e.team) avoid(o.x, o.z, o.r); }
     for (let i = 0; i < staticObs.length; i++) { const o = staticObs[i]; if (o !== ignore) avoid(o.x, o.z, o.r); }
+    // Other units: avoid ones that aren't travelling with us (prevents head-on harvester deadlocks).
+    for (let i = 0; i < unitsBuf.length; i++) {
+      const o = unitsBuf[i];
+      if (o === e || o === ignore || o.state === 'dead') continue;
+      const ox = o.x - e.x, oz = o.z - e.z;
+      if (ox * ox + oz * oz > 100) continue;
+      if (o.state !== 'idle' && Math.cos(o.rot) * dx - Math.sin(o.rot) * dz > 0.5) continue;
+      avoid(o.x, o.z, o.r * 0.8);
+    }
+    // Stuck fallback: if we barely moved since the last steer call, sidestep for a moment.
+    if (e._px != null) {
+      const moved = Math.hypot(e.x - e._px, e.z - e._pz);
+      if (moved < 0.2 * e.speed * dt) e.stuckT = (e.stuckT || 0) + dt; else e.stuckT = Math.max(0, (e.stuckT || 0) - dt);
+      if (e.stuckT > 0.8 && !(e.detour > 0)) { e.detour = 1.2; e.detourSide = Math.random() < 0.5 ? -1 : 1; e.stuckT = 0; }
+    }
+    if (e.detour > 0) { e.detour -= dt; sx += -dz * e.detourSide * 1.8; sz += dx * e.detourSide * 1.8; }
     const sl = Math.hypot(sx, sz) || 1;
     const step = Math.min(e.speed * dt, dist);
     const vx = sx / sl, vz = sz / sl;
     e.x += vx * step; e.z += vz * step;
+    e._px = e.x; e._pz = e.z;
     turnTo(e, Math.atan2(-vz, vx), dt);
     return dist - step;
   }
@@ -546,12 +564,12 @@ export function createSim(world) {
     enemyAI(dt);
 
     unitsBuf.length = 0;
+    for (let i = 0; i < ents.length; i++) if (ents[i].isUnit && ents[i].state !== 'dead') unitsBuf.push(ents[i]);
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
       if (e.state === 'dead') continue;
       if (e.cooldown > 0) e.cooldown -= dt;
       if (e.isUnit) {
-        unitsBuf.push(e);
         if (e.kind === 'harvester') updateHarvester(e, dt);
         else if (e.state === 'move') updateMover(e, dt);
         else if (e.state === 'attack') updateCombat(e, dt);

@@ -3,12 +3,14 @@
 //  - Models face local +X. If sim uses rot = atan2(dz, dx), set mesh.rotation.y = -rot.
 //  - Tank/turret aim: rotate mesh.userData.turret.rotation.y (local, same +X convention).
 //  - world.lights {hemi, sun} exposed for fx day/night tinting.
+//  - Ground plane is 3x map size; out-of-bounds darkening is a shader patch on world.ground.material.
+//    Fog near/far is set per view in placeCamera (fx only lerps fog colour).
 import * as THREE from 'three';
 
 const VIEWS = {
   aerial:   { zoom: 34, min: 16, max: 48 },             // ortho half-height
-  tactical: { pitch: 68, fov: 50, zoom: 44, min: 24, max: 105 },  // zoom = camera distance
-  low:      { pitch: 40, fov: 55, zoom: 34, min: 18, max: 70 },
+  tactical: { pitch: 68, fov: 50, zoom: 38, min: 22, max: 100 },  // zoom = camera distance
+  low:      { pitch: 40, fov: 55, zoom: 30, min: 16, max: 46 },
 };
 const BASES = [{ x: -55, z: 25 }, { x: 55, z: -25 }];
 
@@ -48,7 +50,7 @@ export async function createEngine() {
           queues: { barracks: [], factory: [] }, defenseTier: 0, enemyTier: 0,
           message: null, gameOver: null },
     lights: { hemi, sun },
-    camTarget: { x: BASES[0].x + 19, z: BASES[0].z - 4 }, // base sits left-center of the opening view
+    camTarget: { x: BASES[0].x + 17, z: BASES[0].z + 1 }, // base sits left-center of the opening view
     view: 'tactical',
     views: VIEWS,
   };
@@ -77,6 +79,10 @@ export async function createEngine() {
       cam.position.set(t.x, Math.sin(p) * v.zoom, t.z + Math.cos(p) * v.zoom);
     }
     cam.lookAt(t.x, 0, t.z);
+    if (scene.fog) { // keep fog off the playfield in every view; only the far out-of-bounds ground fades
+      if (world.view === 'aerial') { scene.fog.near = 700; scene.fog.far = 1200; }
+      else { scene.fog.near = v.zoom * 2.4; scene.fog.far = v.zoom * 6 + 120; }
+    }
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
   }
@@ -84,7 +90,10 @@ export async function createEngine() {
     const t = world.camTarget, hw = world.map.w / 2, hh = world.map.h / 2;
     placeCamera(cam, v, t);
     const L = world.groundAt(0, H * 0.5), R = world.groundAt(W, H * 0.5);
-    const T = world.groundAt(W * 0.5, 0) || world.groundAt(W * 0.5, H * 0.3), B = world.groundAt(W * 0.5, H);
+    // perspective views: measure the far edge a little below the top so the stretched horizon band
+    // doesn't dominate the span (the low view sees ~130u deep at max zoom).
+    const ty = world.view === 'low' ? H * 0.22 : world.view === 'tactical' ? H * 0.08 : 0;
+    const T = world.groundAt(W * 0.5, ty) || world.groundAt(W * 0.5, H * 0.3), B = world.groundAt(W * 0.5, H);
     if (!L || !R || !T || !B) return;
     const eL = t.x - L.x, eR = R.x - t.x, eT = t.z - T.z, eB = B.z - t.z;
     const clamp1 = (c, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, c)));
@@ -199,9 +208,9 @@ export async function createEngine() {
   {
     vec2 q = max(abs(vGW.xz) - uMapHalf, 0.0);
     float d = length(q);
-    float k = smoothstep(0.0, 14.0, d) * 0.55 + smoothstep(14.0, 90.0, d) * 0.25;
+    float k = smoothstep(0.0, 6.0, d) * 0.6 + smoothstep(6.0, 80.0, d) * 0.4;
     float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lum) * vec3(0.92, 0.88, 0.84), k * 0.9) * (1.0 - k * 0.75);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lum) * vec3(0.95, 0.9, 0.86), k * 0.8) * (1.0 - k * 0.6);
     float rim = (1.0 - smoothstep(0.0, 1.6, d)) * step(0.001, d);
     diffuseColor.rgb *= 1.0 - rim * 0.25;
   }`);
@@ -278,11 +287,19 @@ export async function createEngine() {
     const o = new THREE.Mesh(geo(`c${rt},${rb},${h},${seg}`, () => new THREE.CylinderGeometry(rt, rb, h, seg)), m); o.position.set(x, y, z); return o;
   }
   const shade = (hex, f) => new THREE.Color(hex).multiplyScalar(f).getHex();
-  const SLATE = 0x59626e, DARK = 0x2a2f36, METAL = 0x9aa3ad;
+  const SLATE = 0x6c7682, DARK = 0x2a2f36, METAL = 0x9aa3ad, LIGHTSLATE = 0x98a1ab;
+  const PLATE = mat(0x33383f), LAMP = mat(0xffd27a, { emissive: 0x8a5a00 }), HAZ = mat(0xd9a521);
+  // Base plate: slightly larger than the footprint, chamfered slab so buildings sit on the ground.
+  // hx/hz are half extents; pass hz==null for a hex plate of radius hx.
+  function plate(hx, hz, ox = 0) {
+    if (hz == null) return cyl(hx, hx + 0.4, 0.3, 6, PLATE, 0, 0.15, 0);
+    return box(hx * 2, 0.3, hz * 2, PLATE, ox, 0.15, 0);
+  }
 
   world.makeMesh = (kind, team = -1) => {
     const tc = world.colors[team] ?? 0xbbbbbb;
-    const T = mat(tc), Td = mat(shade(tc, 0.6)), S = mat(SLATE), D = mat(DARK), M = mat(METAL);
+    const T = mat(tc), Td = mat(shade(tc, 0.6)), S = mat(SLATE), D = mat(DARK), M = mat(METAL), L = mat(LIGHTSLATE);
+    const LIGHT = mat(tc, { emissive: tc, emissiveIntensity: 0.7 }), GLOW = mat(0x39d8ff, { emissive: 0x1aa0cc });
     const g = new THREE.Group();
     switch (kind) {
       case 'warden': {
@@ -327,34 +344,73 @@ export async function createEngine() {
         break;
       }
       case 'cc': {
-        g.add(cyl(8, 8.4, 1.4, 6, S, 0, 0.7, 0));
-        g.add(cyl(6.2, 7.4, 3.2, 6, T, 0, 3, 0));
-        g.add(cyl(4.2, 5.2, 2.0, 6, Td, 0, 5.6, 0));
-        g.add(cyl(0.25, 0.25, 3, 6, M, 2.2, 7.6, 1.2));
-        const dish = new THREE.Mesh(geo('dish', () => new THREE.SphereGeometry(1.8, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2.6)), mat(0xd8dde3, { side: THREE.DoubleSide }));
-        dish.position.set(2.2, 9.6, 1.2); dish.rotation.set(Math.PI * 0.85, 0, 0.4); g.add(dish);
-        g.add(cyl(1.2, 1.2, 0.4, 6, mat(0x39d8ff, { emissive: 0x1aa0cc }), 0, 6.8, 0));
+        g.add(plate(9.6));
+        g.add(cyl(8, 8.4, 1.4, 6, S, 0, 0.7, 0));                 // foundation hex
+        g.add(cyl(6.2, 7.2, 3.0, 6, L, 0, 2.9, 0));               // main hex (structure)
+        g.add(cyl(7.25, 7.25, 0.7, 6, T, 0, 3.0, 0));             // team band (panel)
+        g.add(cyl(4.2, 5.2, 2.0, 6, S, 0, 5.4, 0));               // upper tier
+        g.add(cyl(4.25, 4.25, 0.35, 6, Td, 0, 6.1, 0));
+        for (let i = 0; i < 6; i++) {                             // ring of 6 pylons on the foundation corners
+          const a = i / 6 * Math.PI * 2 + Math.PI / 6, rx = Math.cos(a) * 7.4, rz = Math.sin(a) * 7.4;
+          g.add(box(0.8, 2.6, 0.8, D, rx, 2.7, rz));
+          g.add(box(0.95, 0.35, 0.95, T, rx, 4.1, rz));
+          g.add(box(0.4, 0.3, 0.4, LIGHT, rx, 4.4, rz));
+        }
+        g.add(cyl(0.45, 0.95, 6.2, 6, M, 0, 9.5, 0));             // central spire
+        g.add(cyl(1.1, 1.1, 0.35, 6, T, 0, 8.2, 0));
+        g.add(cyl(0.18, 0.18, 2.2, 6, D, 0, 13.6, 0));            // dish mast
+        const dish = new THREE.Mesh(geo('dish', () => new THREE.SphereGeometry(1.7, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2.6)), mat(0xd8dde3, { side: THREE.DoubleSide }));
+        dish.position.set(0.3, 14.9, 0); dish.rotation.set(Math.PI * 0.82, 0, 0.5); g.add(dish);
+        g.add(cyl(1.2, 1.2, 0.4, 6, GLOW, 0, 6.5, 0));
         break;
       }
       case 'barracks': {
-        g.add(box(9, 0.6, 7.4, S, 0, 0.3, 0));
-        g.add(box(8, 4, 6.4, T, 0, 2.6, 0));
-        g.add(box(8.4, 0.5, 6.8, Td, 0, 4.85, 0));
-        g.add(box(0.3, 2.6, 2.6, D, 4.1, 1.9, 0)); // door slab
-        g.add(box(0.25, 0.4, 2.8, mat(0xffd27a, { emissive: 0x8a5a00 }), 4.15, 3.4, 0));
+        g.add(plate(5.9, 4));
+        g.add(box(8, 3.4, 6.4, L, 0, 1.9, 0));                    // main hall
+        for (const z of [3.22, -3.22]) { g.add(box(5.4, 1.3, 0.1, T, -0.9, 2.3, z)); for (const x of [-2.8, -0.9, 1.0]) g.add(box(0.9, 0.5, 0.12, D, x, 2.3, z)); } // team side panels + windows
+        for (const [z, r] of [[1.6, 0.5], [-1.6, -0.5]]) {    // gabled roof: 2 angled slabs
+          const slab = box(8.6, 0.3, 3.9, S, 0, 4.35, z); slab.rotation.x = r; g.add(slab);
+        }
+        g.add(box(8.7, 0.3, 0.45, T, 0, 5.2, 0));                 // ridge cap (team trim)
+        const gable = new THREE.Mesh(geo('gable', () => {             // triangular attic under the slabs
+          const sh = new THREE.Shape(); sh.moveTo(-3.2, 0); sh.lineTo(3.2, 0); sh.lineTo(0, 1.6); sh.lineTo(-3.2, 0);
+          const gg = new THREE.ExtrudeGeometry(sh, { depth: 7.8, bevelEnabled: false }); gg.translate(0, 0, -3.9); gg.rotateY(Math.PI / 2); return gg;
+        }), L);
+        gable.position.y = 3.6; g.add(gable);
+        g.add(box(0.3, 2.5, 2.6, D, 3.92, 1.45, 0));              // door recess (dark, set in)
+        g.add(box(0.5, 2.9, 0.35, M, 4.05, 1.65, 1.5), box(0.5, 2.9, 0.35, M, 4.05, 1.65, -1.5));
+        g.add(box(0.55, 0.45, 3.4, T, 4.08, 3.2, 0));             // team lintel
+        g.add(box(0.2, 0.25, 2.2, LAMP, 4.2, 2.85, 0));
+        for (const [x, z, h] of [[-2.6, 1.9, 3.4], [-3.2, -1.7, 2.4]]) { // 2 antennas
+          g.add(cyl(0.07, 0.1, h, 5, M, x, 4.4 + h / 2, z));
+          g.add(box(0.22, 0.22, 0.22, LIGHT, x, 4.45 + h, z));
+        }
         break;
       }
       case 'factory': {
-        g.add(box(10, 0.6, 8, S, 0, 0.3, 0));
-        g.add(box(9.4, 4.4, 7, T, 0, 2.8, 0));
-        g.add(box(9.6, 0.4, 7.2, Td, 0, 5.2, 0));
-        g.add(box(3, 1.2, 3, D, -1.5, 6, 0)); // roof vent
-        for (let i = 0; i < 3; i++) g.add(box(2.8, 0.15, 0.2, M, -1.5, 6.65, -1 + i));
-        g.add(cyl(0.6, 0.7, 3, 8, S, 3, 6.6, 2.2));
-        g.add(box(0.3, 3.2, 4.2, D, 4.75, 2.2, 0));
+        g.add(plate(6.4, 5.4, 0.6));
+        g.add(box(10, 4.2, 7.6, L, 0, 2.35, 0));                  // main shed
+        g.add(box(10.1, 0.55, 7.7, T, 0, 3.9, 0));                // team band
+        g.add(box(10.3, 0.4, 7.9, S, 0, 4.65, 0));                // roof
+        for (const x of [-3.2, -1.2, 0.8]) {                      // 3 roof vents
+          g.add(cyl(0.55, 0.65, 1.3, 8, D, x, 5.5, -1.6));
+          g.add(cyl(0.8, 0.8, 0.18, 8, M, x, 6.25, -1.6));
+        }
+        g.add(box(5.5, 0.1, 0.12, M, -1.2, 4.9, 1.8));
+        g.add(box(0.55, 3.6, 4.8, D, 4.8, 1.9, 0));               // rolling door recess
+        for (let i = 0; i < 6; i++) g.add(box(0.12, 0.12, 4.4, M, 5.08, 0.6 + i * 0.52, 0)); // door slats
+        g.add(box(0.6, 0.45, 5.4, T, 5.05, 3.95, 0));             // team header over door
+        for (const z of [2.7, -2.7]) g.add(box(0.5, 4.0, 0.5, HAZ, 5.0, 2.0, z));
+        // side crane: mast on the +z side, boom out over the door, cable + hook
+        g.add(box(0.7, 7.6, 0.7, M, -2.5, 3.8, 4.6));
+        g.add(box(9.6, 0.5, 0.55, HAZ, 1.8, 7.5, 4.6));
+        g.add(box(1.3, 0.9, 1.0, S, -3.4, 7.5, 4.6));             // counterweight
+        g.add(cyl(0.05, 0.05, 2.6, 4, D, 5.6, 6.0, 4.6));
+        g.add(box(0.5, 0.35, 0.5, D, 5.6, 4.6, 4.6));
         break;
       }
       case 'turret_mg': {
+        g.add(cyl(2.0, 2.1, 0.22, 8, PLATE, 0, 0.11, 0));
         g.add(cyl(1.5, 1.6, 1.2, 8, S, 0, 0.6, 0));
         const tur = new THREE.Group(); tur.position.y = 1.2;
         tur.add(cyl(0.9, 1.0, 0.7, 8, T, 0, 0.35, 0));
@@ -363,6 +419,7 @@ export async function createEngine() {
         break;
       }
       case 'turret_cannon': {
+        g.add(cyl(2.0, 2.1, 0.22, 8, PLATE, 0, 0.11, 0));
         g.add(cyl(1.4, 1.6, 2.6, 8, S, 0, 1.3, 0));
         const tur = new THREE.Group(); tur.position.y = 2.6;
         tur.add(cyl(1.0, 1.2, 0.9, 8, T, 0, 0.45, 0));
@@ -371,6 +428,7 @@ export async function createEngine() {
         break;
       }
       case 'artillery': {
+        g.add(box(4.2, 0.22, 4.2, PLATE, 0, 0.11, 0));
         g.add(box(3.4, 0.8, 3.4, S, 0, 0.4, 0));
         const tur = new THREE.Group(); tur.position.y = 0.8;
         tur.add(cyl(1.2, 1.4, 0.8, 8, T, 0, 0.4, 0));
@@ -380,14 +438,15 @@ export async function createEngine() {
         break;
       }
       case 'wall': {
-        g.add(box(4, 2, 1.5, mat(0x5b6470), 0, 1, 0));
-        g.add(box(4.02, 0.3, 1.52, T, 0, 1.55, 0));
+        g.add(box(4, 2, 1.5, mat(0x7a838d), 0, 1, 0));
+        g.add(box(4.02, 0.25, 1.6, S, 0, 2.05, 0));               // slate cap
+        g.add(box(3.2, 0.3, 1.54, T, 0, 1.45, 0));                // team stripe on both faces (panel)
         break;
       }
       case 'gate': {
         g.add(box(1.2, 4, 2, S, 0, 2, 2), box(1.2, 4, 2, S, 0, 2, -2));
         g.add(box(0.5, 3.2, 2.6, mat(tc, { emissive: tc, emissiveIntensity: 0.9, transparent: true, opacity: 0.8 }), 0, 1.8, 0));
-        g.add(box(1.4, 0.4, 6, Td, 0, 4.2, 0));
+        g.add(box(1.4, 0.4, 6, S, 0, 4.2, 0), box(1.42, 0.2, 3.2, T, 0, 4.2, 0));
         break;
       }
       case 'crystal': {
@@ -411,7 +470,7 @@ export async function createEngine() {
     g.userData.height = HEIGHT[kind] ?? 2;
     return g;
   };
-  const HEIGHT = { warden: 1.6, raider: 1.9, tank: 2.3, harvester: 2.4, cc: 10, barracks: 5.4, factory: 7, turret_mg: 2.2, turret_cannon: 3.6, artillery: 2.6, wall: 2.2, gate: 4.6, crystal: 3 };
+  const HEIGHT = { warden: 1.6, raider: 1.9, tank: 2.3, harvester: 2.4, cc: 12, barracks: 5.6, factory: 7.2, turret_mg: 2.2, turret_cannon: 3.6, artillery: 2.6, wall: 2.2, gate: 4.6, crystal: 3 };
   world.entityHeight = (e) => e.mesh?.userData?.height ?? HEIGHT[e.kind] ?? 2;
 
   // ---------- Input ----------

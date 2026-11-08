@@ -14,7 +14,8 @@ fs.mkdirSync(path.join(root, 'test/out'), { recursive: true });
 const snap = async (n) => page.screenshot({ path: path.join(root, `test/out/play-${n}.png`) });
 const st = async () => page.evaluate(() => { const w = window.world; const by = {}; for (const e of w.entities) { const k = e.team + ':' + e.kind; by[k] = (by[k] || 0) + 1; } return { t: Math.round(w.clock.t), crystals: w.ui.crystals, tier: w.ui.defenseTier, etier: w.ui.enemyTier, over: w.ui.gameOver, by }; });
 // Fast-forward helper: run sim at high speed in bursts
-const ff = async (sec) => { await page.evaluate(s => { window.world.clock.speed = 30; window.__ffUntil = window.world.clock.t + s; }, sec); await page.waitForTimeout(Math.max(500, sec / 30 * 1000 + 300)); await page.evaluate(() => { window.world.clock.speed = 1; }); };
+// Polls game time (not wall time): headless swiftshader frames are slow and engine caps dt at 0.05*speed, so a fixed wait under-runs.
+const ff = async (sec) => { const until = await page.evaluate(s => { window.world.clock.speed = 30; return window.world.clock.t + s; }, sec); const t0 = Date.now(); while (Date.now() - t0 < 120000 && await page.evaluate(u => window.world.clock.t < u && !window.world.ui.gameOver, until)) await page.waitForTimeout(100); await page.evaluate(() => { window.world.clock.speed = 1; }); };
 // Give player money and build an army + defenses
 await page.evaluate(() => { const w = window.world, s = w.sim; s.crystals[0] = 3000; const b = w.entities.find(e => e.team === 0 && e.kind === 'barracks'); const f = w.entities.find(e => e.team === 0 && e.kind === 'factory'); for (let i = 0; i < 4; i++) s.enqueue(b, 'warden'); for (let i = 0; i < 2; i++) s.enqueue(f, 'tank'); s.enqueue(f, 'harvester'); w.defense.buildDefense(0); });
 await ff(120); console.log('after 2 min', JSON.stringify(await st()));

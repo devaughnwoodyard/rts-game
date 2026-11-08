@@ -15,7 +15,7 @@ import { CONFIG } from './config.js';
 
 const UNIT_KINDS = new Set(['warden', 'raider', 'tank', 'harvester']);
 const COMBAT_KINDS = ['warden', 'raider', 'tank'];
-const PRODUCES = { barracks: ['warden', 'raider'], factory: ['tank', 'harvester'] };
+const PRODUCES = { barracks: ['warden', 'raider'], factory: ['tank', 'harvester'], cc: ['harvester'] }; // cc: fallback when factory is lost
 const TWO_PI = Math.PI * 2;
 
 export function createSim(world) {
@@ -644,12 +644,16 @@ export function createSim(world) {
       const bar = byKind('barracks', 1), fac = byKind('factory', 1);
       const qOf = (b) => (b && queues.get(b.id)) || [];
       const reserve = world.defense?.enemyReserve ?? C.pacing.enemyReserve;
-      const canBuy = (k) => crystals[1] - C.units[k].cost >= (T > C.pacing.firstWave ? reserve : 0);
+      const army = ents.filter(e => e.team === 1 && e.isUnit && e.dps > 0 && e.state !== 'dead').length;
+      // Below the minimum army the enemy spends everything on units; above it, it banks for defense tiers.
+      const canBuy = (k) => crystals[1] - C.units[k].cost >= (T > C.pacing.firstWave && army >= C.pacing.enemyMinArmy ? reserve : 0);
       // harvesters
+      const hb = fac || hq[1];   // cc builds harvesters if the factory is gone
       const harvs = ents.filter(e => e.team === 1 && e.kind === 'harvester').length +
-        qOf(fac).filter(q => q.kind === 'harvester').length;
-      const want = T >= C.pacing.enemySecondHarvesterAt ? C.pacing.enemyHarvesters : 1;
-      if (fac && harvs < want && qOf(fac).length < C.pacing.enemyMaxQueued && canBuy('harvester')) enqueue(fac, 'harvester');
+        qOf(hb).filter(q => q.kind === 'harvester').length;
+      const want = T >= C.pacing.enemyThirdHarvesterAt ? C.pacing.enemyHarvesters
+        : T >= C.pacing.enemySecondHarvesterAt ? Math.min(2, C.pacing.enemyHarvesters) : 1;
+      if (hb && harvs < want && qOf(hb).length < C.pacing.enemyMaxQueued && crystals[1] >= C.units.harvester.cost) enqueue(hb, 'harvester');
       // army mix, skewed toward counters of the player's army
       let pi = 0, pr = 0, pt = 0;
       for (const e of ents) if (e.team === 0) { if (e.kind === 'warden') pi++; else if (e.kind === 'raider') pr++; else if (e.kind === 'tank') pt++; }
@@ -658,6 +662,7 @@ export function createSim(world) {
       for (let tries = 0; tries < 2; tries++) {
         let r = Math.random() * (w.warden + w.raider + w.tank), kind = 'warden';
         for (const k of COMBAT_KINDS) { if ((r -= w[k]) <= 0) { kind = k; break; } }
+        if (kind === 'tank' && !fac) kind = 'warden';
         const b = kind === 'tank' ? fac : bar;
         if (b && qOf(b).length < C.pacing.enemyMaxQueued && canBuy(kind) && supplyUsed(1) + C.units[kind].supply <= C.supplyCap) enqueue(b, kind);
       }

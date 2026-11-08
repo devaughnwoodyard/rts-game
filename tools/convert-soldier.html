@@ -1,0 +1,214 @@
+<!doctype html><html><head><meta charset="utf-8">
+<!-- One-off converter page driven by tools/convert-soldier.mjs (dev only). -->
+<script type="importmap">{ "imports": {
+  "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const SRC = '/assets/src/anims/';
+const loadFBX = (f) => new Promise((res, rej) => new FBXLoader().load(SRC + encodeURIComponent(f) + '.fbx', res, undefined, rej));
+
+// The Mixamo exports are animation-only (no skin), so we build a low-poly power-armor body here and
+// rigidly skin each armor piece to one bone. Everything is authored in the rig's cm units, T-pose, facing +Z.
+const KEEP = ['Hips', 'Spine', 'Spine1', 'Spine2', 'Neck', 'Head',
+  'LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand', 'RightShoulder', 'RightArm', 'RightForeArm', 'RightHand',
+  'LeftUpLeg', 'LeftLeg', 'LeftFoot', 'RightUpLeg', 'RightLeg', 'RightFoot'].map(n => 'mixamorig' + n);
+
+const CLIPS = [ // [output name, source fbx, opts]
+  ['idle', 'Male Standing Pose'], ['walk', 'Rifle Walk', { inPlace: true }], ['fire', 'Firing Rifle'],
+  ['reload', 'Reload'], ['die', 'Rifle Death', { keepDrift: true }], ['harvest', 'Pull Plant'], ['melee', 'Fist Fight A'],
+];
+
+// vertex colour RGBA: rgb = albedo, a = 1 → multiplied by team colour at runtime, 0 → fixed colour
+const C = {
+  team: [1, 1, 1, 1], teamDk: [0.62, 0.62, 0.66, 1], teamLt: [1, 1, 1, 0.55],
+  suit: [0.16, 0.17, 0.19, 0], gun: [0.2, 0.21, 0.23, 0], gunLt: [0.42, 0.44, 0.47, 0],
+  trim: [0.78, 0.8, 0.82, 0], glow: [0.55, 0.95, 1.0, 0],
+};
+
+window.convert = async () => {
+  const log = [];
+  const rig = await loadFBX('Male Standing Pose');
+  rig.name = 'soldier';
+  // prune fingers / end bones: our rigid armor never uses them
+  const prune = [];
+  rig.traverse(o => { if (o.isBone && !KEEP.includes(o.name)) prune.push(o); });
+  for (const o of prune) o.parent?.remove(o);
+  rig.animations = [];
+  rig.updateMatrixWorld(true);
+  const bones = KEEP.map(n => rig.getObjectByName(n));
+  if (bones.some(b => !b)) throw new Error('missing bone');
+  const bi = (n) => KEEP.indexOf('mixamorig' + n);
+  const P = (n) => rig.getObjectByName('mixamorig' + n).getWorldPosition(new THREE.Vector3());
+
+  const armor = [], visor = [];
+  // place geometry g (authored along +Y, centred) between points a..b, on bone `bone`
+  function finish(g, bone, col, list = armor) {
+    g.deleteAttribute('uv');
+    if (g.index) g = g.toNonIndexed();
+    const n = g.attributes.position.count;
+    const ci = new Float32Array(n * 4), si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) { ci.set(col, i * 4); si[i * 4] = bi(bone); sw[i * 4] = 1; }
+    g.setAttribute('color', new THREE.BufferAttribute(ci, 4));
+    g.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+    g.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+    list.push(g);
+    return g;
+  }
+  const basis = (dir, fwd = new THREE.Vector3(0, 0, 1)) => {
+    const y = dir.clone().normalize();
+    let z = fwd.clone().sub(y.clone().multiplyScalar(fwd.dot(y)));
+    if (z.lengthSq() < 1e-4) z.set(0, 1, 0).sub(y.clone().multiplyScalar(y.y));
+    z.normalize();
+    const x = new THREE.Vector3().crossVectors(y, z);
+    return new THREE.Matrix4().makeBasis(x, y, z);
+  };
+  // segment: geometry built along Y of length 1 and scaled to the bone span (+ext), offset sideways
+  function seg(bone, child, w, d, col, { ext = 0, round = 2.2, taper = 1, off = [0, 0, 0], fwd } = {}) {
+    const a = P(bone), b = P(child), dir = b.clone().sub(a), L = dir.length() + ext;
+    let g = taper === 1 ? new RoundedBoxGeometry(w, L, d, 1, Math.min(round, w / 2.2, d / 2.2))
+      : new THREE.CylinderGeometry(w / 2 * taper, w / 2, L, 6);
+    const m = basis(dir, fwd);
+    g.applyMatrix4(new THREE.Matrix4().makeTranslation(off[0], off[1], off[2]));
+    g.applyMatrix4(m);
+    const mid = a.clone().add(b).multiplyScalar(0.5).add(dir.clone().normalize().multiplyScalar(ext / 2 - 0)); // ext pushes toward child
+    g.applyMatrix4(new THREE.Matrix4().makeTranslation(mid.x, mid.y, mid.z));
+    return finish(g, bone, col);
+  }
+  function blk(bone, geom, pos, col, { rot = [0, 0, 0], list } = {}) {
+    geom.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rot)));
+    const p = P(bone).add(new THREE.Vector3(...pos));
+    geom.applyMatrix4(new THREE.Matrix4().makeTranslation(p.x, p.y, p.z));
+    return finish(geom, bone, col, list);
+  }
+  const RB = (w, h, d, r = 2.5) => new RoundedBoxGeometry(w, h, d, 1, Math.min(r, w / 2.1, h / 2.1, d / 2.1));
+
+  // ---- torso
+  blk('Hips', RB(31, 16, 22, 4), [0, -3, 0], C.suit);
+  blk('Hips', RB(33, 9, 24, 3), [0, 2, 0.5], C.teamDk);                // belt
+  blk('Hips', RB(14, 13, 5, 2), [0, -6, 11], C.team, { rot: [-0.15, 0, 0] }); // codpiece plate
+  blk('Spine', RB(27, 14, 19, 4), [0, 4, -0.5], C.suit);
+  blk('Spine2', RB(42, 30, 28, 6), [0, 4, 1.5], C.team);               // chest
+  blk('Spine2', RB(30, 16, 6, 2.5), [0, 6, 15], C.teamLt, { rot: [-0.18, 0, 0] }); // chest plate
+  blk('Spine2', RB(16, 4, 3, 1), [0, 0, 17.6], C.glow);                // chest light strip
+  blk('Spine1', RB(32, 12, 22, 4), [0, 0, 1], C.teamDk);               // abdomen plates
+  // backpack
+  blk('Spine2', RB(32, 34, 15, 4), [0, 4, -20], C.gun);
+  blk('Spine2', RB(26, 8, 4, 1.5), [0, 14, -28.5], C.teamDk);
+  for (const x of [-9, 9]) blk('Spine2', new THREE.CylinderGeometry(4.2, 5.2, 12, 8), [x, -16, -21], C.gunLt);
+  blk('Spine2', new THREE.CylinderGeometry(0.9, 0.9, 22, 4), [11, 28, -22], C.gunLt);  // antenna
+  // neck + helmet
+  blk('Neck', new THREE.CylinderGeometry(6.5, 8, 11, 8), [0, 4, 0], C.suit);
+  const helm = new THREE.SphereGeometry(14, 12, 9); helm.scale(1, 1.02, 1.12);
+  blk('Head', helm, [0, 9, 1.5], C.team);
+  blk('Head', RB(30, 6, 26, 2.5), [0, 1.5, 0], C.teamDk);              // jaw/collar ring
+  blk('Head', RB(5, 8, 22, 2), [0, 22, 0], C.teamLt);                  // crest
+  const vis = RB(22, 8.5, 9, 3.5); blk('Head', vis, [0, 9.5, 10.5], [0.02, 0.03, 0.04, 0], { list: visor });
+  // ---- arms
+  for (const s of ['Left', 'Right']) {
+    const sx = s === 'Left' ? 1 : -1;
+    seg(s + 'Arm', s + 'ForeArm', 12, 12, C.suit, { ext: 2 });
+    seg(s + 'Arm', s + 'ForeArm', 13.5, 14, C.teamDk, { ext: -12, off: [0, 3, 0] });          // upper-arm plate
+    seg(s + 'ForeArm', s + 'Hand', 15, 15, C.team, { ext: 0, round: 3 });                       // gauntlet
+    blk(s + 'Hand', RB(11, 8, 10, 2.5), [sx * 6, -1, 0], C.suit);                               // fist
+    // pauldron: big rounded shell over the shoulder joint
+    const pa = new THREE.SphereGeometry(12.5, 10, 6, 0, Math.PI * 2, 0, Math.PI * 0.55); pa.scale(1.15, 0.85, 1.15);
+    blk(s + 'Arm', pa, [sx * 3.5, 3, 0], C.team, { rot: [0, 0, -sx * 0.32] });
+    blk(s + 'Arm', RB(22, 3, 24, 1.2), [sx * 5.5, 1.2, 0], C.teamDk, { rot: [0, 0, -sx * 0.32] }); // pauldron rim
+    blk(s + 'Shoulder', RB(10, 10, 12, 3), [sx * 4, 0, 0], C.suit);
+  }
+  // ---- legs
+  for (const s of ['Left', 'Right']) {
+    seg(s + 'UpLeg', s + 'Leg', 17, 18, C.team, { ext: -2, round: 4 });            // thigh
+    seg(s + 'Leg', s + 'Foot', 15, 16, C.teamDk, { ext: 2, round: 3.5 });            // shin
+    blk(s + 'Leg', RB(11, 12, 6, 2), [0, -2, 9], C.teamLt, { rot: [0.1, 0, 0] });    // knee pad
+    blk(s + 'Foot', RB(15, 11, 27, 3.5), [0, -3.5, 7.5], C.suit);                    // boot
+    blk(s + 'Foot', RB(15.5, 4, 14, 1.5), [0, 1.8, 0], C.teamDk);                    // ankle cuff
+  }
+
+  // ---- rifle in the right hand, aligned to the two-hand grip of the Firing Rifle pose
+  const fireSrc = await loadFBX('Firing Rifle');
+  const mixer = new THREE.AnimationMixer(rig);
+  mixer.clipAction(fireSrc.animations[0]).play(); mixer.update(0.05); rig.updateMatrixWorld(true);
+  const rh = rig.getObjectByName('mixamorigRightHand'), lh = rig.getObjectByName('mixamorigLeftHand');
+  const rW = rh.getWorldPosition(new THREE.Vector3()), lW = lh.getWorldPosition(new THREE.Vector3());
+  const hipsW = rig.getObjectByName('mixamorigHips').getWorldPosition(new THREE.Vector3());
+  const aimW = lW.clone().sub(rW).normalize();
+  log.push('fire pose: rightHand ' + rW.toArray().map(v => v.toFixed(0)) + ' leftHand ' + lW.toArray().map(v => v.toFixed(0)) + ' aim ' + aimW.toArray().map(v => v.toFixed(2)));
+  // rifle frame in world (fire pose): +Z = muzzle direction, +Y = world-up-ish
+  const rifleWorld = basis(new THREE.Vector3(0, 1, 0), aimW); // y=up, z=aim (orthogonalised)
+  const zA = aimW.clone(), yA = new THREE.Vector3(0, 1, 0).sub(zA.clone().multiplyScalar(zA.y)).normalize();
+  rifleWorld.makeBasis(new THREE.Vector3().crossVectors(yA, zA), yA, zA);
+  const gripW = rW.clone().add(aimW.clone().multiplyScalar(6)).add(new THREE.Vector3(0, -1, 0));
+  rifleWorld.setPosition(gripW);
+  const handInv = rh.matrixWorld.clone().invert();
+  const rifleInHand = handInv.multiply(rifleWorld); // rifle frame expressed in hand-local space (pose independent)
+  mixer.stopAllAction(); mixer.uncacheRoot(rig);
+  // reset to rest pose before skinning
+  const rest = await loadFBX('Male Standing Pose');
+  for (const b of bones) { const s = rest.getObjectByName(b.name); b.position.copy(s.position); b.quaternion.copy(s.quaternion); b.scale.copy(s.scale); }
+  rig.updateMatrixWorld(true);
+  const rifleRest = rh.matrixWorld.clone().multiply(rifleInHand);
+  const rifleParts = [];
+  const rp = (g, x, y, z, col, rot) => { if (rot) g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rot))); g.translate(x, y, z); g.applyMatrix4(rifleRest); rifleParts.push(finish(g, 'RightHand', col)); };
+  rp(RB(5.5, 9, 40, 1.5), 0, 2, 10, C.gun);                      // receiver (from stock to fore-grip)
+  rp(RB(5, 7, 16, 1.5), 0, 0.5, -14, C.gun);                     // stock
+  rp(RB(6, 3.5, 22, 1), 0, 7.5, 12, C.teamDk);                   // top rail / team stripe
+  rp(new THREE.CylinderGeometry(1.4, 1.6, 22, 6), 0, 2.5, 40, C.gunLt, [Math.PI / 2, 0, 0]); // barrel
+  rp(new THREE.CylinderGeometry(2.4, 2.4, 5, 6), 0, 2.5, 50, C.gun, [Math.PI / 2, 0, 0]);    // muzzle brake
+  rp(RB(4.5, 12, 6, 1), 0, -6, 15, C.gun, [0.25, 0, 0]);         // magazine
+  rp(RB(3.5, 8, 4, 1), 0, -4, -1, C.gun, [-0.3, 0, 0]);          // pistol grip
+  rp(RB(4, 4, 9, 1), 0, 11, 6, C.glow);                          // scope glow
+
+  // ---- merge + skin
+  const armorG = mergeGeometries(armor, false), visorG = mergeGeometries(visor, false);
+  const geom = mergeVertices(mergeGeometries([armorG, visorG], true), 1e-3);
+  log.push('groups ' + JSON.stringify(geom.groups));
+  const matA = new THREE.MeshStandardMaterial({ name: 'armor', vertexColors: true, metalness: 0.4, roughness: 0.5 });
+  const matV = new THREE.MeshStandardMaterial({ name: 'visor', color: 0x05080c, metalness: 0.9, roughness: 0.15, emissive: 0x0b3a48 });
+  const mesh = new THREE.SkinnedMesh(geom, [matA, matV]);
+  mesh.name = 'body';
+  rig.add(mesh);
+  rig.updateMatrixWorld(true);
+  const skel = new THREE.Skeleton(bones);
+  mesh.bind(skel, mesh.matrixWorld);
+  const box = new THREE.Box3().setFromBufferAttribute(geom.attributes.position);
+  log.push('verts ' + geom.attributes.position.count + ' bbox ' + box.min.toArray().map(v => v.toFixed(0)) + ' / ' + box.max.toArray().map(v => v.toFixed(0)));
+
+  // ---- clips
+  const keepTrack = new Set(KEEP.map(n => n + '.quaternion').concat(['mixamorigHips.position']));
+  const clips = [];
+  for (const [name, file, opt = {}] of CLIPS) {
+    const src = file === 'Firing Rifle' ? fireSrc : await loadFBX(file);
+    const c = src.animations[0].clone(); c.name = name;
+    c.tracks = c.tracks.filter(t => keepTrack.has(t.name));
+    const hp = c.tracks.find(t => t.name === 'mixamorigHips.position');
+    if (hp) {
+      const v = hp.values, x0 = v[0], z0 = v[2];
+      for (let i = 0; i < v.length; i += 3) {
+        if (opt.keepDrift) { v[i] -= x0; v[i + 2] -= z0; } else { v[i] = 0; v[i + 2] = 0; }
+      }
+    }
+    c.optimize(); c.resetDuration();
+    clips.push(c);
+    log.push(`clip ${name} <- ${file}: ${c.duration.toFixed(2)}s ${c.tracks.length} tracks ${c.tracks.reduce((s, t) => s + t.times.length, 0)} keys`);
+  }
+  // fire aim direction relative to facing, for the engine (rifle muzzle in world at the fire pose)
+  log.push('aim yaw deg (0 = +Z) ' + (Math.atan2(aimW.x, aimW.z) * 180 / Math.PI).toFixed(1));
+
+  const exporter = new GLTFExporter();
+  const glb = await exporter.parseAsync(rig, { binary: true, animations: clips, onlyVisible: false });
+  const bytes = new Uint8Array(glb);
+  window.__glb = bytes;
+  log.push('glb bytes ' + bytes.length);
+  return log;
+};
+window.chunk = (i, n) => { const b = window.__glb.subarray(i, i + n); let s = ''; for (let k = 0; k < b.length; k += 0x8000) s += String.fromCharCode.apply(null, b.subarray(k, k + 0x8000)); return btoa(s); };
+window.ready = true;
+</script></body></html>

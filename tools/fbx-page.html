@@ -1,0 +1,14 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script type="importmap">{ "imports": {
+  "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head><body>
+<script type="module">
+import * as THREE from 'three';
+import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+window.THREE = THREE;
+window.loadFBX = (url) => new Promise((res, rej) => new FBXLoader().load(url, res, undefined, rej));
+window.GLTFExporter = GLTFExporter;
+window.ready = true;
+</script></body></html>

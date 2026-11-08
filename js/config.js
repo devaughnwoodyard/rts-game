@@ -67,12 +67,14 @@ export const CONFIG = {
     waveBase: 2,            // units in first wave
     waveGrowthPer: 150,     // +1 unit every N seconds of match time
     waveMax: 30,
-    enemyTrickleBase: 15,   // crystals/min at t=0
-    enemyTrickleGrowth: 10, // +crystals/min per minute elapsed
+    enemyTrickleBase: 30,   // crystals/min at t=0
+    enemyTrickleGrowth: 12, // +crystals/min per minute elapsed
     enemyMaxQueued: 2,      // enemy keeps ≤N items queued per building (leaves cash for defense tiers)
     enemyReserve: 150,      // enemy keeps this banked for defense tiers (world.defense.enemyReserve overrides)
-    enemyHarvesters: 2,
-    enemySecondHarvesterAt: 150, // s
+    enemyHarvesters: 3,
+    enemySecondHarvesterAt: 100, // s
+    enemyThirdHarvesterAt: 300,  // s
+    enemyMinArmy: 6,        // below this many combat units the enemy doesn't bank for defense tiers
     enemyMix: { warden: 3, raider: 2, tank: 1 },
     counterWeight: 2.5,     // how hard the enemy skews toward counters of the player's army
   },

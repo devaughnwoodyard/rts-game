@@ -81,9 +81,12 @@ const LAYERS = [
   { f: 'tex/box_profile_metal_sheet', tile: 5, lum: 0.55, tint: [1, 1, 1], gray: 1 },  // 12 corrugated (containers)
   { f: 'tex/concrete_panels', tile: 8, lum: 0.55, tint: [1, 1, 1] },                   // 13 concrete panels (ruins)
   { f: 'ph/dry_ground_rocks', tile: 12, lum: 0.44, tint: [1.0, 0.95, 0.88] },           // 14 badlands dirt + pebbles
+  { f: 'ph/volcanic_rock_tiles', tile: 10, lum: 0.24, tint: [1.0, 0.9, 0.86] },         // 15 volcanic citadel paving (NE base)
+  { f: 'ph/rock_wall_08', tile: 9, lum: 0.42, tint: [1.0, 0.95, 0.92] },                // 16 NW cliff faces (vertex-tinted red)
+  { f: 'ph/gravel_floor_02', tile: 7, lum: 0.5, tint: [0.98, 0.94, 0.88] },             // 17 badlands gravel variation
 ];
 const NL = LAYERS.length;
-const L = { DIRT: 14, CONC: 0, ASPH: 1, BASALT: 2, CRACK: 3, FOREST: 4, GRASS: 5, SAND: 6, REDROCK: 7, GRAVEL: 8, STRATA: 9, BURN: 10, RUST: 11, CORR: 12, PANEL: 13 };
+const L = { DIRT: 14, VTILES: 15, CLIFF: 16, GRAVEL2: 17, CONC: 0, ASPH: 1, BASALT: 2, CRACK: 3, FOREST: 4, GRASS: 5, SAND: 6, REDROCK: 7, GRAVEL: 8, STRATA: 9, BURN: 10, RUST: 11, CORR: 12, PANEL: 13 };
 
 function loadImage(url) {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('load ' + url)); im.src = url; });
@@ -286,6 +289,8 @@ ${NOISE_GLSL}
   if (tI1 == 1) tVw = smoothstep(0.5, 0.75, tMk.r) * 0.8;
   if (tI1 == 2) { if (tMk.a > tVw) tV1 = 7; tVw = max(tVw, tMk.a); }
   if (tI1 == 3) tVw = 0.3 + 0.25 * tMk.r;
+  if (tI1 == 4) { tV1 = tMk.r > 0.5 ? 14 : 17; tVw = smoothstep(0.08, 0.3, abs(tMk.r - 0.5)); }
+  if (tI1 == 1) { float tCit = smoothstep(52.0, 34.0, length(tWp - vec2(200.0, -110.0)) + (tNoise(tWp * 0.15) - 0.5) * 10.0); if (tCit > tVw) { tV1 = 15; tVw = tCit; } }
   vec2 tUv1 = tWp / uTile[tP1];
   vec2 tUv2 = tWp / uTile[tP2] + 0.5;
   vec3 tCP = texture(tLayers, vec3(tUv1, float(tP1))).rgb * uTint[tP1];
@@ -443,7 +448,7 @@ export async function createTerrain(world) {
   const B = { 0: new Builder(), 1: new Builder(), 2: new Builder(), 3: new Builder(), 4: new Builder() };
   const dunesB = new Builder();
   const lavaList = [], puddleList = [], railB = new Builder();
-  const trees = [], cones = [], bushes = []; // {x,z,s,h,c,ry}
+  const trees = [], cones = [], bushes = [], roots = []; // {x,z,s,h,c,ry}
 
   // ---------- NW: forest + red mountainside ----------
   const red = (k = 1) => (x, y, z, ly) => { const b = 0.5 + 0.5 * Math.sin(y * 1.3 + vnoise(x * 0.2, z * 0.2) * 3); return [(0.78 + 0.1 * b) * k, (0.5 + 0.07 * b) * k, (0.4 + 0.05 * b) * k]; };
@@ -458,12 +463,12 @@ export async function createTerrain(world) {
   for (let x = -250; x < -30; x += 11 + R() * 5) {
     const z = -HH + 6 + R() * 6, r = 7 + R() * 5;
     if (blockedBy(x, z, r * 0.8, 0)) continue;
-    cliff(B[2], x, z, r, 10 + R() * 12, (x | 0) + 500, red()); obs(x, z, r * 1.05, 'cliff'); feats.push({ x, z, r, t: 'cliff' });
+    cliff(B[2], x, z, r, 10 + R() * 12, (x | 0) + 500, red(), L.CLIFF); obs(x, z, r * 1.05, 'cliff'); feats.push({ x, z, r, t: 'cliff' });
   }
   for (let z = -150; z < -15; z += 11 + R() * 5) {
     const x = -HW + 6 + R() * 6, r = 7 + R() * 5;
     if (blockedBy(x, z, r * 0.8, 0)) continue;
-    cliff(B[2], x, z, r, 9 + R() * 12, (z | 0) + 900, red()); obs(x, z, r * 1.05, 'cliff'); feats.push({ x, z, r, t: 'cliff' });
+    cliff(B[2], x, z, r, 9 + R() * 12, (z | 0) + 900, red(), L.CLIFF); obs(x, z, r * 1.05, 'cliff'); feats.push({ x, z, r, t: 'cliff' });
   }
   // out-of-bounds mountain wall (visual only)
   for (let x = -330; x < -10; x += 14 + R() * 8) {
@@ -477,7 +482,7 @@ export async function createTerrain(world) {
   // red rock outcrops inside the forest
   for (let i = 0; i < 6; i++) {
     const r = 5 + R() * 5, p = place(2, r, 0.6); if (!p) continue;
-    cliff(B[2], p.x, p.z, r, 6 + R() * 9, i + 77, red()); obs(p.x, p.z, r * 1.05, 'cliff'); feats.push({ x: p.x, z: p.z, r, t: 'cliff' });
+    cliff(B[2], p.x, p.z, r, 6 + R() * 9, i + 77, red(), L.CLIFF); obs(p.x, p.z, r * 1.05, 'cliff'); feats.push({ x: p.x, z: p.z, r, t: 'cliff' });
   }
   // groves
   const greens = [[0.018, 0.06, 0.014], [0.03, 0.08, 0.014], [0.055, 0.1, 0.016], [0.1, 0.11, 0.018], [0.015, 0.05, 0.02]];
@@ -500,6 +505,10 @@ export async function createTerrain(world) {
     const h = 7 + R() * 8, g = greens[(R() * greens.length) | 0];
     cones.push({ x, z, s: h * 0.3, h, c: g, ry: R() * 6 }); trees.push({ x, z, s: 0.4, h: h * 0.6 });
   }
+  for (const o of obstacles) if ((o.kind === 'cliff' || o.kind === 'grove') && o.x < -40 && o.z < -20) {
+    const n = o.kind === 'cliff' ? 4 : 2;
+    for (let k = 0; k < n; k++) { const a = R() * 6.28, d = o.r * (0.8 + R() * 0.2); roots.push({ x: o.x + Math.cos(a) * d, z: o.z + Math.sin(a) * d, ry: -a + (R() - 0.5) * 0.8, s: 0.9 + R() * 0.8, k: R() }); }
+  }
   // ferns/undergrowth (no collision)
   for (let i = 0; i < 160; i++) {
     const x = (R() - 0.5) * MAP.w, z = (R() - 0.5) * MAP.h, [b, w] = dominant(x, z);
@@ -509,7 +518,7 @@ export async function createTerrain(world) {
   }
 
   // ---------- NE: volcanic ----------
-  const basaltC = (x, y, z) => { const n = vnoise(x * 0.3, z * 0.3 + y * 0.2); return [0.5 + 0.12 * n, 0.46 + 0.08 * n, 0.44 + 0.06 * n]; };
+  const basaltC = (x, y, z) => { const n = vnoise(x * 0.3, z * 0.3 + y * 0.2); return [0.3 + 0.1 * n, 0.27 + 0.06 * n, 0.26 + 0.05 * n]; };
   for (let i = 0; i < 10; i++) {
     const r = 6 + R() * 6, p = place(1, r + 3, 0.6, 400, 8); if (!p) continue;
     const seed = 300 + i;
@@ -833,8 +842,16 @@ export async function createTerrain(world) {
     const c = new THREE.ConeGeometry(0.48, 0.42, 7, 1).translate(0, 0.21 + 0.82, 0);
     return mergeSimple([{ g: a, m: new THREE.Matrix4() }, { g: b, m: new THREE.Matrix4() }, { g: c, m: new THREE.Matrix4() }]);
   })();
-  instanced(new THREE.CylinderGeometry(0.6, 1, 1, 5).translate(0, 0.5, 0), (() => { const m = vegMat('trunk'); m.color.setRGB(0.09, 0.055, 0.035); return m; })(), trees,
+  const trunkMat = (() => { const m = vegMat('trunk'); m.flatShading = false; m.color.setRGB(0.55, 0.5, 0.48);
+    const tl = new THREE.TextureLoader(), set = (t, srgb) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(2, 3); t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; return t; };
+    m.map = set(tl.load('assets/ph/bark_brown_02/diff.jpg'), true);
+    if (quality === 'high') { m.normalMap = set(tl.load('assets/ph/bark_brown_02/nor_gl.jpg'), false); }
+    return m; })();
+  instanced(new THREE.CylinderGeometry(0.6, 1, 1, 6).translate(0, 0.5, 0), trunkMat, trees,
     (t, m) => m.compose(new THREE.Vector3(t.x, 0, t.z), new THREE.Quaternion(), new THREE.Vector3(t.s, t.h, t.s)), 'trunks');
+  // Earth Cult dressing: gnarled bark roots arching out of the ground around red-rock outcrops and grove edges
+  const rootGeo = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(0, -0.3, 0), new THREE.Vector3(0.9, 0.9, 0.1), new THREE.Vector3(2.2, 1.1, -0.2), new THREE.Vector3(3.3, 0.3, 0.2), new THREE.Vector3(3.9, -0.4, 0)]), 14, 0.32, 6, false);
+  instanced(rootGeo, trunkMat, roots, (t, m) => m.compose(new THREE.Vector3(t.x, 0, t.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, t.ry, 0)), new THREE.Vector3(t.s, t.s * (0.8 + t.k * 0.6), t.s)), 'roots');
   instanced(coneGeo, vegMat('cone'), cones, (t, m) => m.compose(new THREE.Vector3(t.x, 0, t.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, t.ry, 0)), new THREE.Vector3(t.s, t.h, t.s)), 'conifers');
   instanced(rockGeo(31, 1, 0.35), vegMat('bush'), bushes, (t, m) => m.compose(new THREE.Vector3(t.x, t.y, t.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, t.ry, 0)), new THREE.Vector3(t.s, t.h, t.s)), 'bushes');
 

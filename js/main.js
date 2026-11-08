@@ -19,6 +19,9 @@ const sim     = createSim     ? createSim(world)          : null;
 const defense = createDefense ? createDefense(sim, world) : null;
 const fx      = createFx      ? createFx(world)           : null;
 const hud     = createHud     ? createHud(world, sim)     : null;
+// Integrator: "10 minutes in" start (default; ?start=fresh for a normal start).
+const applyScenario = await optional('./scenario.js', 'applyScenario');
+try { applyScenario?.(world, sim); } catch (e) { console.warn('[main] scenario failed:', e.message); }
 
 world.onFrame((dt) => {
   sim?.update?.(dt);

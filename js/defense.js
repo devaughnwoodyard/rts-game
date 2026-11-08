@@ -71,6 +71,15 @@ for (const k of ['turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate']) {
 for (const k in ATTACK) if (CONFIG?.rps?.[k]) ATTACK[k] = { ...ATTACK[k], ...CONFIG.rps[k] };
 if (CONFIG?.defenses?.siege) Object.assign(DEF.siege, CONFIG.defenses.siege);
 if (CONFIG?.dayNight?.nightTurretRangeMul) DEF.nightPenalty = 1 - CONFIG.dayNight.nightTurretRangeMul;
+// ECONOMY v3 prices/crew (CONFIG.econ) are the source of truth when present.
+{
+  const ec = CONFIG?.econ?.costs || {};
+  for (const k of ['wall', 'gate', 'turret_mg', 'turret_cannon', 'turret_aa', 'artillery', 'siege']) if (Number.isFinite(ec[k]?.secondary)) DEF.cost[k] = ec[k].secondary;
+  if (Number.isFinite(ec.wallWidenMul)) DEF.cost.widenMul = ec.wallWidenMul;
+  for (const k of ['housing', 'processor']) if (ec[k]) DEF.cost[k] = ec[k].primary ?? DEF.cost[k];
+  const cr = CONFIG?.econ?.crew || {};
+  for (const k in DEF.crew) if (Number.isFinite(cr[k])) DEF.crew[k] = cr[k];
+}
 
 export function createDefense(sim, world) {
   if (sim?.config?.defense) for (const k in sim.config.defense) {
@@ -113,27 +122,29 @@ export function createDefense(sim, world) {
     if (typeof ec?.canAfford === 'function') { try { return !!ec.canAfford(team, c); } catch (e) { /* fallthrough */ } }
     return fin(sim?.crystals?.[team]) >= total(c);
   }
-  function pay(team, c) {
+  function pay(team, c, cat = 'defense') {
     if (total(c) <= 0) return true;
     const ec = E();
-    if (typeof ec?.spend === 'function') { try { return !!ec.spend(team, c); } catch (e) { return false; } }
+    if (team > 0 && typeof ec?.aiCanSpend === 'function' && !ec.aiCanSpend(team, c, cat)) return false;
+    if (typeof ec?.spend === 'function') { try { return !!ec.spend(team, c, cat); } catch (e) { return false; } }
     return !!sim?.spendCrystals?.(team, total(c));
   }
   function refund(team, c) {
     const ec = E();
-    const fn = ec?.refund || ec?.add || ec?.earn || ec?.grant;
-    if (typeof fn === 'function') { try { fn.call(ec, team, c); return; } catch (e) { /* fallthrough */ } }
+    if (typeof ec?.add === 'function') {   // econ.add(team, kind, n, isIncome)
+      try { if (c.primary > 0) ec.add(team, 'primary', c.primary, false); if (c.secondary > 0) ec.add(team, 'secondary', c.secondary, false); return; } catch (e) { /* fallthrough */ }
+    }
     if (sim?.crystals) sim.crystals[team] = fin(sim.crystals[team]) + total(c);
   }
   function balance(team) {
     const ec = E();
-    const b = ec?.balance?.(team) || ec?.get?.(team) || ec?.wallet?.[team] || ec?.teams?.[team];
+    const b = ec?.res?.[team];
     if (b && (b.secondary != null || b.primary != null)) return { primary: fin(b.primary), secondary: fin(b.secondary) };
     const c = fin(sim?.crystals?.[team]);
     return { primary: c, secondary: c, single: true };
   }
   function currencyName(team, which = 'secondary') {
-    const n = E()?.currencyName?.(team, which);
+    const n = E()?.names?.(team)?.[which];
     if (n) return n;
     if (!E()) return 'Crystals';
     return (which === 'primary' ? PRI_NAME : SEC_NAME)[factionOf(team)] || which;
@@ -221,8 +232,8 @@ export function createDefense(sim, world) {
       e.atkKey = statKey;
       e.canHitAir = kind === 'turret_mg' || kind === 'turret_aa'; e.canHitGround = kind !== 'turret_aa';
       if (kind === 'turret_aa') { e.sight = 30; if (e.mesh?.scale) e.mesh.scale.set(1.1, 1.35, 1.1); }
-      e.crew = DEF.crew[opts.siege ? 'siege' : kind] || 0;
-      e.unmanned = e.crew > 0;          // crewed on the next crew pass
+      e.crewNeed = DEF.crew[opts.siege ? 'siege' : kind] || 0;   // econ.requestCrew sets e.crew when manned
+      e.unmanned = e.crewNeed > 0;
       if (opts.slot) {
         e.onWall = true; e.slot = opts.slot; opts.slot.turret = e;
         e.baseRange *= DEF.slotRange; e.yOff = DEF.wallTop;
@@ -241,7 +252,7 @@ export function createDefense(sim, world) {
       if (kind === 'wall') { e.grade = 1; e.hp = e.hpMax = Math.round(s.hp * DEF.grades[0].hp); }
     }
     defs.add(e);
-    if (e.crew) assignCrew(e);
+    if (e.crewNeed) assignCrew(e);
     emit('built', { entity: e });
     return e;
   }
@@ -259,7 +270,7 @@ export function createDefense(sim, world) {
   world.bus?.addEventListener?.('died', ev => {
     const e = ev.detail?.entity; if (!e) return;
     removeObs(e); defs.delete(e);
-    if (e.crew) { try { E()?.releaseCrew?.(e); } catch (err) { /* econ optional */ } }
+    if (e.crewNeed && e.crew > 0 && typeof E()?.releaseCrew === 'function') { try { if (!E().onDeath) E().releaseCrew(e); } catch (err) { /* econ optional */ } }
     if (e.line) {
       const L = lines.get(e.line);
       if (L) { if (L.segs[e.lineIdx] === e) L.segs[e.lineIdx] = null; recomputeSlots(L); if (!L.segs.some(Boolean)) lines.delete(L.id); }
@@ -450,19 +461,23 @@ export function createDefense(sim, world) {
   }
   const BLD_MESH = { housing: ['barracks', 0.55], processor: ['factory', 0.6] };
   function planBuilding(team, kind, x, z) {
-    const px = snap(x), pz = snap(z), cost = C(0, DEF.cost[kind] ?? 150);
+    const ecC = CONFIG?.econ?.costs?.[kind];
+    const px = snap(x), pz = snap(z), cost = ecC ? C(fin(ecC.secondary), fin(ecC.primary)) : C(0, DEF.cost[kind] ?? 150);
     let reason = null;
     if (!inMap(px, pz, 5)) reason = 'Off map';
     else if (blockedBy(px, pz, 3.5, false)) reason = 'Blocked';
     else if (team === 0 && !inTerritory(team, px, pz)) reason = 'Too far from base';
-    else if (!canPay(team, cost)) reason = 'Need ' + cost.primary + ' ' + currencyName(team, 'primary');
+    else if (!canPay(team, cost)) reason = 'Need ' + cost.primary + ' ' + currencyName(team, 'primary') + (cost.secondary ? ` + ${cost.secondary} ${currencyName(team)}` : '');
     return { team, kind, x: px, z: pz, cost, ok: !reason, reason, r: 3.5 };
   }
   function placeBuilding(team, kind, x, z) {
     const ec = E();
-    if (typeof ec?.placeBuilding === 'function') {
-      try { const r = ec.placeBuilding(team, kind, snap(x), snap(z)); if (r) return r.ok === false ? r : { ok: true, entity: r.entity || r }; }
-      catch (err) { console.warn('[defense] econ.placeBuilding failed', err?.message); }
+    const fnB = ec?.placeBuilding || ec?.build;
+    if (typeof fnB === 'function') {
+      const p = planBuilding(team, kind, x, z);
+      if (!p.ok) return { ok: false, reason: p.reason };
+      try { const r = fnB.call(ec, team, kind, p.x, p.z, { cat: 'expand' }); if (r) return r.ok === false ? r : { ok: true, entity: r.entity || r }; }
+      catch (err) { console.warn('[defense] econ.build failed', err?.message); }
     }
     const p = planBuilding(team, kind, x, z);
     if (!p.ok) return { ok: false, reason: p.reason };
@@ -490,15 +505,17 @@ export function createDefense(sim, world) {
   function unitSupply(team) { let s = 0; for (const e of ents()) if (e.team === team && e.isUnit && alive(e)) s += fin(e.supply); return s; }
   function crewPool(team) {
     if (crewOverride[team] != null) return crewOverride[team];
+    const ec = E();
+    if (typeof ec?.supplyCap === 'function' && typeof ec?.supplyUsed === 'function') return Math.max(0, ec.supplyCap(team) - ec.supplyUsed(team));
     const cap = team === 0 && Number.isFinite(world.ui?.supplyCap) && world.ui.supplyCap > 0 ? world.ui.supplyCap : fin(CONFIG.supplyCap, 40);
     let bonus = 0; for (const e of ents()) if (e.team === team && e.supplyBonus && alive(e) && !E()) bonus += e.supplyBonus;
     return Math.max(0, Math.min(200, cap + bonus) - unitSupply(team));
   }
-  const econCrew = () => typeof E()?.requestCrew === 'function' && crewOverride[0] == null;
+  const econCrew = () => typeof E()?.requestCrew === 'function';
   function assignCrew(e) {
     if (!econCrew()) return;                     // local pool pass handles it
     let r;
-    try { r = E().requestCrew(e, e.crew); } catch (err) { r = false; }
+    try { r = E().requestCrew(e, e.crewNeed); } catch (err) { r = false; }
     if (typeof r === 'boolean') e.unmanned = !r;
     else if (r && typeof r === 'object' && 'ok' in r) e.unmanned = !r.ok;
   }
@@ -508,18 +525,18 @@ export function createDefense(sim, world) {
     const needs = [0, 0];
     if (econCrew()) {
       crewRetry -= 0.5;
-      if (crewRetry <= 0) { crewRetry = 2; for (const e of defs) if (e.crew && e.unmanned && alive(e)) assignCrew(e); }
+      if (crewRetry <= 0) { crewRetry = 2; for (const e of defs) if (e.crewNeed && e.unmanned && alive(e)) assignCrew(e); }
     } else {
       const byTeam = new Map();
-      for (const e of defs) if (e.crew && alive(e)) { if (!byTeam.has(e.team)) byTeam.set(e.team, []); byTeam.get(e.team).push(e); }
+      for (const e of defs) if (e.crewNeed && alive(e)) { if (!byTeam.has(e.team)) byTeam.set(e.team, []); byTeam.get(e.team).push(e); }
       for (const [team, list] of byTeam) {
         list.sort((a, b) => a.id - b.id);
         let free = crewPool(team), used = 0;
-        for (const e of list) { if (free >= e.crew) { free -= e.crew; used += e.crew; e.unmanned = false; } else e.unmanned = true; }
+        for (const e of list) { if (free >= e.crewNeed) { free -= e.crewNeed; used += e.crewNeed; e.unmanned = false; e.crew = e.crewNeed; } else { e.unmanned = true; e.crew = 0; } }
         if (team === 0) world.ui.crewUsed = used;
       }
     }
-    for (const e of defs) if (e.team === 0 && e.crew && e.unmanned && alive(e)) { needs[0]++; needs[1] += e.crew; }
+    for (const e of defs) if (e.team === 0 && e.crewNeed && e.unmanned && alive(e)) { needs[0]++; needs[1] += e.crewNeed; }
     world.ui.needsCrew = needs[0]; world.ui.needsCrewSupply = needs[1];
   }
 
@@ -663,7 +680,7 @@ export function createDefense(sim, world) {
     if (!td) return { ok: false, reason: 'maxed' };
     if (st.researched.has(index)) return { ok: false, reason: 'done' };
     const c = C(td.cost);
-    if (!pay(team, c)) return { ok: false, reason: 'crystals', need: c };
+    if (!pay(team, c, 'tech')) return { ok: false, reason: 'crystals', need: c };
     st.building = { tier: index + 1, index, name: td.name, t: 0, total: td.buildTime };
     if (team === 0) world.ui.defenseBuild = { tier: index + 1, name: td.name, progress: 0 };
     return { ok: true };

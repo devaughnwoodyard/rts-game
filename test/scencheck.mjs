@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+const root = process.argv[2];
+const mime = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.glb':'model/gltf-binary','.gltf':'model/gltf+json' };
+const server = http.createServer((q,r)=>{let p=decodeURIComponent(q.url.split('?')[0]); if(p==='/')p='/index.html'; const f=path.join(root,p); if(!fs.existsSync(f)||fs.statSync(f).isDirectory()){r.writeHead(404);return r.end();} r.writeHead(200,{'Content-Type':mime[path.extname(f)]||'application/octet-stream'}); fs.createReadStream(f).pipe(r);});
+await new Promise(r=>server.listen(0,r));
+const b = await chromium.launch({ args:['--use-gl=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'] });
+const p = await (await b.newContext({ viewport:{width:844,height:390} })).newPage();
+const errs=[]; p.on('pageerror',e=>errs.push(String(e))); p.on('console',m=>{if(m.type()==='error'||/scenario|main]/.test(m.text()))errs.push(m.type()+': '+m.text())});
+await p.goto(`http://127.0.0.1:${server.address().port}/`); await p.waitForTimeout(20000);
+const s = await p.evaluate(()=>{ const w=window.world, by={}; for(const e of w.entities){ if(e.team<0) continue; const k=e.team+':'+(e.cls==='bld'?'bld':e.kind); by[k]=(by[k]||0)+1; } const st=[0,1,2,3].map(t=>w.econ?.stats?.(t)); return {by, st: st.map(x=>x&&{p:Math.round(x.primary),s:Math.round(x.secondary),plots:x.plots,ext:x.extractors,sup:x.supply+'/'+x.supplyCap})}; });
+console.log(JSON.stringify(s,null,0)); console.log('ERRORS', errs.length, errs.slice(0,4).join(' | '));
+await b.close(); server.close();

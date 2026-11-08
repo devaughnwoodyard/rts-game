@@ -171,7 +171,9 @@ export function applyTuning(t = TUNING) {
       trainable: b.trainable !== false,
       vs: b.vs ? { ...b.vs } : { inf: 1, veh: 1, bld: 1 },
       projectile: b.projectile || (b.dps ? 'bullet' : null),
+      rps: null, // set below (sim reads ROSTER[kind].rps)
     });
+    e.rps = e.vs;
   }
   return ROSTER;
 }

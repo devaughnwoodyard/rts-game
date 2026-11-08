@@ -1,0 +1,16 @@
+import { chromium } from 'playwright';
+import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+const root = process.argv[2];
+const mime = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.glb':'model/gltf-binary','.gltf':'model/gltf+json' };
+const server = http.createServer((q,r)=>{let p=decodeURIComponent(q.url.split('?')[0]); if(p==='/')p='/index.html'; const f=path.join(root,p); if(!fs.existsSync(f)||fs.statSync(f).isDirectory()){r.writeHead(404);return r.end();} r.writeHead(200,{'Content-Type':mime[path.extname(f)]||'application/octet-stream'}); fs.createReadStream(f).pipe(r);});
+await new Promise(r=>server.listen(0,r));
+const b = await chromium.launch({ args:['--use-gl=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'] });
+const p = await (await b.newContext({ viewport:{width:844,height:390} })).newPage();
+const log=[]; const t0=Date.now();
+p.on('request',r=>{ if(/\/js\//.test(r.url())) log.push(`${Date.now()-t0}ms req ${r.url().split('/js/')[1]}`); });
+p.on('console',m=>log.push(`${Date.now()-t0}ms ${m.type()}: ${m.text().slice(0,160)}`));
+p.on('pageerror',e=>log.push('PAGEERR '+e));
+await p.goto(`http://127.0.0.1:${server.address().port}/?q=low`); await p.waitForTimeout(45000);
+const s = await p.evaluate(()=>({heroes:!!window.world?.heroes, buildmode:!!window.world?.buildmode, abilities:!!window.world?.abilities}));
+console.log(log.join('\n')); console.log(JSON.stringify(s));
+await b.close(); server.close();

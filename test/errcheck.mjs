@@ -8,6 +8,6 @@ const b = await chromium.launch({ args:['--use-gl=swiftshader','--enable-unsafe-
 const p = await (await b.newContext({ viewport:{width:844,height:390}, deviceScaleFactor:1 })).newPage();
 const errs=[]; p.on('pageerror',e=>errs.push(String(e))); p.on('console',m=>{if(m.type()==='error')errs.push(m.text())}); p.on('response',r=>{if(r.status()>=400)errs.push('404 '+r.url())});
 await p.goto(`http://127.0.0.1:${server.address().port}/`); await p.waitForTimeout(15000);
-const s = await p.evaluate(()=>({ents:window.world?.entities?.length, t:window.world?.clock?.t, map:window.world?.map, fps:window.world?.fps}));
+const s = await p.evaluate(()=>({ents:window.world?.entities?.length, map:window.world?.map, heroes:!!window.world?.heroes, buildmode:!!window.world?.buildmode, abilities:!!window.world?.abilities}));
 console.log(JSON.stringify(s)); console.log('ERRORS', errs.length, errs.slice(0,6).join('\n'));
 await b.close(); server.close();

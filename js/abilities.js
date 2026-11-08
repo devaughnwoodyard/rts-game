@@ -471,13 +471,13 @@ export function createAbilities(world, sim, opts = {}) {
           if (own.length >= MINE_CAP) { const old = own.shift(); if (old) killMine(old, false); }
           const a = (i / f.n) * Math.PI * 2 + Math.random() * 0.5, rr = f.r * Math.sqrt(0.2 + 0.8 * Math.random());
           const o = spawnTemp('vanguard_mine', e.team, c2.x + Math.cos(a) * rr, c2.z + Math.sin(a) * rr,
-            { mine: true, noBlock: true, stealth: true, external: true, isUnit: false, layer: e, mineDmg: f.amt * m, mineSlow: f.slow, mineSlowDur: f.slowDur, armedAt: t + 1 });
+            { mine: true, trap: true, noBlock: true, stealth: true, external: true, isUnit: false, layer: e, mineDmg: f.amt * m, mineSlow: f.slow, mineSlowDur: f.slowDur, armedAt: t + 1 });
           if (o) { mines.push(o); own.push(o); }
         }
         break;
       }
       case 'claymore': {
-        const o = spawnTemp('vanguard_mine', e.team, c2.x, c2.z, { mine: true, noBlock: true, stealth: true, external: true, isUnit: false, layer: e,
+        const o = spawnTemp('vanguard_mine', e.team, c2.x, c2.z, { mine: true, trap: true, noBlock: true, stealth: true, external: true, isUnit: false, layer: e,
           claymore: { dx: ctx.dx, dz: ctx.dz, len: f.len, arc: f.arc, amt: f.amt * m, trig: f.trig }, armedAt: t + 1 });
         if (o) { o.rot = Math.atan2(-ctx.dz, ctx.dx); mines.push(o); }
         break;

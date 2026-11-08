@@ -139,6 +139,16 @@ const cascade = await page.evaluate((id) => {
   return { turretDead: t.state === 'dead', slots: L.slots.length };
 }, wall.id);
 ok(cascade.turretDead && cascade.slots === 1, 'turret on a wall dies with its segment');
+// plot tap hand-off from HUD + walls refuse plots
+const plot = await page.evaluate(() => {
+  const w = window.world, p = w.econ?.plots?.find(q => q.owner < 0 && q.claiming < 0);
+  if (!p) return null;
+  w.buildmode.openPlotSheet(p);
+  const btns = [...document.querySelectorAll('#bm-sheet [data-bm^="act-plot"]')].map(b => b.textContent);
+  return { btns, blocked: !w.defense.planWall(0, p.x - 2, p.z, p.x + 2, p.z).ok };
+});
+if (plot) { ok(plot.btns.length > 0, 'openPlotSheet shows econ.plotActions: ' + plot.btns.join(' | ')); ok(plot.blocked, 'walls cannot be placed on land plots'); }
+await shot('plot');
 await click('build');
 ok(await page.evaluate(() => !window.world.buildMode.state.open && window.world.input.mode !== 'build'), 'second tap of Build closes build mode');
 await shot('closed');

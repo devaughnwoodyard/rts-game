@@ -38,6 +38,9 @@
 //  - Unit flags: air (y=8, ignores ground obstacles/walls/pathing, only hit by canHitAir), canHitGround:false,
 //    burrowed (untargetable, always hidden from the player when enemy, no attacks, 0.7x speed), armor (fractional
 //    reduction applied after status.dmgMul). Defense turrets: turret_mg canHitAir (defense.js uses sim.canHit).
+//  - trap:true (mines) / untargetable:true (moat, sandstorm): never targeted or damaged by attacks, don't block via
+//    structures, no fog sight (noSight), traps always hidden from the player when enemy. defense.js triggers them.
+//  - e.env = {slow, sight, until} (set by defense.js zones/mines) multiplies move speed and fog sight while active.
 import { CONFIG } from './config.js';
 
 // Optional faction roster (ROSTER worker). Missing file => legacy CONFIG.units only.
@@ -226,7 +229,9 @@ export function createSim(world) {
 
   function rebuildStaticObs() {
     // Buildings/crystals block movement. Walls/gates come via world.obstacles (defense.js).
-    staticObs = ents.filter(e => !e.isUnit && e.state !== 'dead' && e.kind !== 'wall' && e.kind !== 'gate');
+    // trap/untargetable zone entities (mines, moat segments, sandstorm) never block via the structure list; moats
+    // block through their own team-tagged world.obstacles entry.
+    staticObs = ents.filter(e => !e.isUnit && e.state !== 'dead' && e.kind !== 'wall' && e.kind !== 'gate' && !e.trap && !e.untargetable);
     staticVer++;
   }
 
@@ -258,6 +263,7 @@ export function createSim(world) {
     else if (TURRETS.has(e.kind) || e.siege) s = S.turret * (e.tall ? C.fog.tallMul : 1) + e.r;
     else s = S.bld + e.r;
     if (world.defense?.hasSurveillance?.(0)) s *= C.fog.survMul;
+    if (e.env && e.env.until > now() && Number.isFinite(e.env.sight)) s *= e.env.sight;   // sandstorm
     return s;
   }
   const fogIdx = (x, z) => {
@@ -283,7 +289,7 @@ export function createSim(world) {
     fogCur.fill(0);
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
-      if (e.team !== 0 || e.state === 'dead') continue;
+      if (e.team !== 0 || e.state === 'dead' || e.noSight) continue;
       const d = disc(sightOf(e) / FC);
       const cx = Math.floor((e.x + MW / 2) / FC), cz = Math.floor((e.z + MH / 2) / FC);
       for (let k = 0; k < d.length; k += 2) {
@@ -307,7 +313,7 @@ export function createSim(world) {
     const on = !!fog.enabled;
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
-      e.hidden = e.team > 0 && (e.burrowed || (on && !visibleAt(e)));
+      e.hidden = e.team > 0 && (e.burrowed || e.trap || (on && !visibleAt(e)));
     }
   }
   function fogTick(dt) {
@@ -454,13 +460,13 @@ export function createSim(world) {
   }
   // Can attacker a hit victim v at all? (air / ground / burrowed rules)
   function canHit(a, v) {
-    if (!v || v.burrowed) return false;
+    if (!v || v.burrowed || v.trap || v.untargetable) return false;
     if (v.air) return !!a.canHitAir;
     return a.canHitGround !== false;
   }
 
   function damage(victim, attacker, dmg) {
-    if (!victim || victim.state === 'dead' || victim.cls === 'neutral' || !(dmg > 0)) return;
+    if (!victim || victim.state === 'dead' || victim.cls === 'neutral' || victim.untargetable || !(dmg > 0)) return;
     const vs = victim.status;
     if (vs && vs.dmgMul != null && Number.isFinite(vs.dmgMul) && !(vs.until != null && now() > vs.until)) dmg *= Math.max(0, vs.dmgMul);
     if (victim.armor > 0) dmg *= 1 - Math.min(0.9, victim.armor);
@@ -519,7 +525,7 @@ export function createSim(world) {
     if (structural) rebuildStaticObs();
   }
 
-  const isEnemyOf = (a, b) => b.team !== a.team && b.team >= 0 && b.state !== 'dead' && b.cls !== 'neutral';
+  const isEnemyOf = (a, b) => b.team !== a.team && b.team >= 0 && b.state !== 'dead' && b.cls !== 'neutral' && !b.trap && !b.untargetable;
   const edgeDist = (a, b) => Math.hypot(b.x - a.x, b.z - a.z) - b.r;
 
   function effRange(e) {
@@ -612,6 +618,7 @@ export function createSim(world) {
   function moveSpeed(e) {
     let v = e.speed;
     if (e.burrowed) v *= 0.7;
+    if (e.env && e.env.until > now() && Number.isFinite(e.env.slow)) v *= Math.max(0, e.env.slow);   // mines / sandstorm
     const st = e.status;
     if (st) {
       if (Number.isFinite(st.slowMul)) v *= Math.max(0, st.slowMul);

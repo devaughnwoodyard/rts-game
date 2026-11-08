@@ -18,6 +18,15 @@
 // is placed on the base crystal field or in the lane cc->field (sim.bases[t]); turrets slide sideways away from
 // the field. Ring 2 (R38) encloses the base field so the field is inside the defenses, ring 1 (R22) has the field
 // lane as its front opening. Turret target scans use sim.near (spatial hash) when available.
+// Per-faction tiers (tiersFor(team); names/costs exposed in tierInfo):
+//  - vanguard T7 'Minefield Belt': ~20 'vanguard_mine' entities (trap:true, untargetable, non-blocking, hidden from
+//    enemies) on a ring outside ring 2; an enemy ground unit (not air/burrowed) within 2.5 triggers 160 dmg + slow.
+//  - earth T5 'Water Moat' / volcanic T5 'Lava Moat': ring of 'moat_water'/'moat_lava' segment entities (untargetable)
+//    each with a team-tagged world.obstacles circle (blocks other teams' ground units, own units pass, air ignores);
+//    one crossing toward the map center. Lava also burns enemies at its edge for 20 dps.
+//  - storm T5 'Sandstorm Wall': ring of 'sandstorm' zone entities (non-blocking); enemy units inside get
+//    e.env = {slow:0.6, sight:0.5, until} (sim applies to move speed / fog sight).
+//  - other factions keep the v1 list. Moat/zone/mine entities carry untargetable:true + noSight:true.
 
 import { CONFIG } from './config.js';
 
@@ -229,6 +238,92 @@ export function createDefense(sim, world) {
   };
   const place = (kind, team, R, da, opts) => { const p = polar(team, R, da); return spawnDef(kind, team, p.x, p.z, opts); };
 
+  // ---------- faction tier extras: mines, moats, sandstorm ----------
+  const zones = new Set();              // moat / sandstorm / mine entities we drive
+  const factionOf = (team) => world.factions?.[team] || CONFIG.teams?.factions?.[team];
+  function ringPoints(team, R, spacing, gapA, gapArc) {
+    const b = baseOf(team), n = Math.max(8, Math.round(TAU * R / spacing)), out = [];
+    for (let i = 0; i < n; i++) {
+      const a = b.face + (i / n) * TAU;
+      if (gapA != null && angDiff(a, gapA) * R < gapArc) continue;
+      const x = b.x + Math.cos(a) * R, z = b.z + Math.sin(a) * R;
+      if (!inMap(x, z, 2) || inKeepOut(team, x, z, 2)) continue;
+      out.push({ x, z, a });
+    }
+    return out;
+  }
+  function spawnZone(kind, team, x, z, r, opts = {}) {
+    if (!sim?.spawn) return null;
+    const e = sim.spawn(kind, team, x, z, { cls: 'bld', untargetable: true, noSight: true, hp: 1e6, hpMax: 1e6, r, ...opts });
+    if (!e) return null;
+    zones.add(e);
+    emit('built', { entity: e });
+    return e;
+  }
+  function moatRing(team, type) {
+    const b = baseOf(team), R = DEF.ring2 + 6;
+    for (const p of ringPoints(team, R, 4.5, b.face, 6)) {
+      if (blockedBy(p.x, p.z, 2, true)) continue;
+      const e = spawnZone(type === 'lava' ? 'moat_lava' : 'moat_water', team, p.x, p.z, 3, { moat: type, rot: -p.a - Math.PI / 2 });
+      if (!e) continue;
+      const o = { x: p.x, z: p.z, r: 3, team, owner: e, moat: type };
+      e._obs = o; world.obstacles.push(o);
+    }
+  }
+  function sandstormRing(team) {
+    const b = baseOf(team), R = DEF.ring2 + 7;
+    for (const p of ringPoints(team, R, 7, null, 0)) spawnZone('sandstorm', team, p.x, p.z, 5, { zone: 'sandstorm', rot: -p.a });
+  }
+  function minefield(team) {
+    const R = DEF.ring2 + 7, pts = ringPoints(team, R, 2, null, 0);
+    const step = Math.max(1, Math.floor(pts.length / 20));
+    let n = 0;
+    for (let i = 0; i < pts.length && n < 20; i += step) {
+      const p = pts[i];
+      if (blockedBy(p.x, p.z, 1.2, false)) continue;
+      if (spawnZone('vanguard_mine', team, p.x, p.z, 0.8, { trap: true, hp: 1, hpMax: 1 })) n++;
+    }
+  }
+  const qZone = [];
+  let zoneT = 0;
+  function stepZones(dt) {
+    zoneT -= dt;
+    if (zoneT > 0) return;
+    const step = 0.25 - zoneT; zoneT = 0.25;
+    const t = now();
+    for (const z of zones) {
+      if (!alive(z)) { removeObs(z); zones.delete(z); continue; }
+      const cand = sim?.near ? sim.near(z.x, z.z, z.r + 3, qZone) : ents();
+      if (z.trap) {
+        for (const u of cand) {
+          if (!isUnit(u) || u.team === z.team || u.team < 0 || !alive(u) || u.air || u.burrowed) continue;
+          if (Math.hypot(u.x - z.x, u.z - z.z) > 2.5 + (u.r || 0) * 0.5) continue;
+          for (const v of (sim?.near ? sim.near(z.x, z.z, 4, []) : ents()).slice()) {
+            if (!isUnit(v) || v.team === z.team || v.team < 0 || !alive(v) || v.air || v.burrowed) continue;
+            if (Math.hypot(v.x - z.x, v.z - z.z) > 4) continue;
+            sim.damage?.(v, null, 160);
+            v.env = { slow: 0.5, sight: 1, until: t + 3 };
+          }
+          emit('shot', { from: { x: z.x, z: z.z, y: 0.2 }, to: { x: z.x, z: z.z, y: 0 }, kind: 'mine' });
+          sim.kill?.(z); zones.delete(z);
+          break;
+        }
+      } else if (z.moat === 'lava') {
+        for (const u of cand.slice()) {
+          if (!isUnit(u) || u.team === z.team || u.team < 0 || !alive(u) || u.air) continue;
+          if (Math.hypot(u.x - z.x, u.z - z.z) - (u.r || 0) > z.r + 1.5) continue;
+          sim.damage?.(u, null, 20 * step);
+        }
+      } else if (z.zone === 'sandstorm') {
+        for (const u of cand) {
+          if (!isUnit(u) || u.team === z.team || u.team < 0 || !alive(u)) continue;
+          if (Math.hypot(u.x - z.x, u.z - z.z) > z.r) continue;
+          if (!(u.env && u.env.slow < 0.6 && u.env.until > t)) u.env = { slow: 0.6, sight: 0.5, until: t + 0.5 };
+        }
+      }
+    }
+  }
+
   // ---------- tiers ----------
   const G1 = [0, TAU / 3, -TAU / 3], G2 = [0, Math.PI];
   const TIERS = [
@@ -243,13 +338,24 @@ export function createDefense(sim, world) {
     { name: 'Shield Gate',      cost: 1200, buildTime: 160, apply: t => { const b = baseOf(t); const g = spawnDef('gate', t, b.x + Math.cos(b.face) * DEF.ring2, b.z + Math.sin(b.face) * DEF.ring2, { rot: -b.face }); if (g) g.regen = DEF.gate.regen; } },
     { name: 'Siege Cannon',     cost: 1400, buildTime: 180, apply: t => { place('artillery', t, 11, Math.PI, { siege: true }); } },
   ];
+  const OVERRIDES = {
+    vanguard: { 6: { name: 'Minefield Belt', cost: 900, buildTime: 135, apply: t => minefield(t) } },
+    earth:    { 4: { name: 'Water Moat', cost: 650, buildTime: 110, apply: t => moatRing(t, 'water') } },
+    volcanic: { 4: { name: 'Lava Moat', cost: 700, buildTime: 115, apply: t => moatRing(t, 'lava') } },
+    storm:    { 4: { name: 'Sandstorm Wall', cost: 600, buildTime: 100, apply: t => sandstormRing(t) } },
+  };
+  const tiersFor = (team) => {
+    const o = OVERRIDES[factionOf(team)] || {};
+    return TIERS.map((td, i) => o[i] || td);
+  };
+  for (const st of T) st.tiers = tiersFor(st.team);
 
   function buildDefense(team = 0) {
     const st = T[team];
     if (!st) return { ok: false, reason: 'bad team' };
     if (st.building) return { ok: false, reason: 'busy' };
-    if (st.tier >= TIERS.length) return { ok: false, reason: 'maxed' };
-    const td = TIERS[st.tier];
+    if (st.tier >= st.tiers.length) return { ok: false, reason: 'maxed' };
+    const td = st.tiers[st.tier];
     if (!sim?.spendCrystals?.(team, td.cost)) return { ok: false, reason: 'crystals' };
     st.building = { tier: st.tier + 1, name: td.name, t: 0, total: td.buildTime };
     if (team === 0) world.ui.defenseBuild = { tier: st.tier + 1, name: td.name, progress: 0 };
@@ -258,9 +364,10 @@ export function createDefense(sim, world) {
 
   function tierInfo(team = 0) {
     const st = T[team]; if (!st) return null;
-    const td = TIERS[st.tier];
+    const td = st.tiers[st.tier];
     return {
-      current: st.tier,
+      current: st.tier, faction: factionOf(team),
+      list: st.tiers.map((x, i) => ({ tier: i + 1, name: x.name, cost: x.cost, buildTime: x.buildTime })),
       next: td ? { tier: st.tier + 1, name: td.name, cost: td.cost, buildTime: td.buildTime } : null,
       building: st.building ? { tier: st.building.tier, name: st.building.name,
         progress: st.building.t / st.building.total, remaining: Math.max(0, st.building.total - st.building.t) } : null,
@@ -273,7 +380,7 @@ export function createDefense(sim, world) {
     if (st.team === 0) world.ui.defenseBuild = { tier: b.tier, name: b.name, progress: Math.min(1, b.t / b.total) };
     if (b.t < b.total) return;
     st.building = null;
-    try { TIERS[b.tier - 1].apply(st.team); } catch (e) { console.warn('[defense] tier apply failed', e); }
+    try { st.tiers[b.tier - 1].apply(st.team); } catch (e) { console.warn('[defense] tier apply failed', e); }
     st.tier = b.tier; st.lastTierAt = now();
     if (st.team === 0) { world.ui.defenseTier = st.tier; world.ui.defenseBuild = null; }
     else { world.ui.enemyTiers[st.team] = st.tier; world.ui.enemyTier = Math.max(...T.slice(1).map(s => s.tier)); }
@@ -284,7 +391,7 @@ export function createDefense(sim, world) {
   function stepAI() {
     for (let t = 1; t < NT; t++) {
       const st = T[t];
-      if (st.building || st.tier >= TIERS.length || now() < DEF.aiStart) continue;
+      if (st.building || st.tier >= st.tiers.length || now() < DEF.aiStart) continue;
       if (!ents().some(e => e.kind === 'cc' && e.team === t && alive(e))) continue;  // eliminated
       let top = 0; for (const o of T) if (o !== st) top = Math.max(top, o.tier);
       const ahead = Math.max(0, top - st.tier);
@@ -379,18 +486,19 @@ export function createDefense(sim, world) {
       if (e.kind === 'gate') stepGate(e, dt);
       if (e.baseRange) stepTurret(e, dt);
     }
+    stepZones(dt);
   }
 
   function reserveFor(team) {
     const st = T[team]; if (!st || team === 0) return 0;
-    const td = TIERS[st.tier];
+    const td = st.tiers[st.tier];
     if (!td || st.building) return 0;
     const due = Math.max(DEF.aiStart, st.lastTierAt + DEF.aiInterval);
     return now() >= due - DEF.aiReserveLead ? td.cost : 0;
   }
 
   const api = {
-    update, buildDefense, tierInfo, tiers: TIERS, _state: T, _defs: defs,
+    update, buildDefense, tierInfo, tiers: T[0].tiers, tiersFor, _state: T, _defs: defs, _zones: zones,
     hasSurveillance: team => !!world.ui.surveillanceBy[team],
     // crystals the enemy army AI should keep banked so tiers stay affordable (sim reads this)
     reserveFor,

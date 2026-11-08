@@ -41,8 +41,9 @@ const start = await page.evaluate(() => {
 console.log('start', JSON.stringify(start));
 
 const counts = () => page.evaluate(() => { const w = window.world, out = {}; for (const e of w.entities) if (e.isUnit) out[e.team] = (out[e.team] || 0) + 1; const tiers = w.defense?._state?.map(s => s.tier); return { t: Math.round(w.clock.t), units: out, tiers, crystals: w.sim.crystals.map(Math.round), alive: w.ui.teamsAlive, over: w.ui.gameOver }; });
-// Fast-forward by game time (headless frames are slow; engine caps dt at 0.05*speed).
-const ff = async (sec) => { const until = await page.evaluate(s => { window.world.clock.speed = 40; return window.world.clock.t + s; }, sec); const t0 = Date.now(); while (Date.now() - t0 < 300000 && await page.evaluate(u => window.world.clock.t < u && !window.world.ui.gameOver, until)) await page.waitForTimeout(200); await page.evaluate(() => { window.world.clock.speed = 1; }); };
+// Fast-forward: headless rendering is far too slow on a shared box, so pause the engine clock (speed 0 => sim/defense
+// see dt 0 from the frame loop) and step sim + defense directly at 0.1s game steps, timing each sim step.
+const ff = async (sec) => { let left = sec; while (left > 0 && !(await page.evaluate(() => window.world.ui.gameOver))) { const chunk = Math.min(30, left); left -= chunk; await page.evaluate(n => { const w = window.world; w.clock.speed = 0; for (let i = 0; i < n && !w.ui.gameOver; i++) { w.clock.t += 0.1; const t0 = performance.now(); w.sim.update(0.1); w.defense?.update?.(0.1); window.__m.maxStep = Math.max(window.__m.maxStep, performance.now() - t0); window.__m.sumStep = (window.__m.sumStep || 0) + performance.now() - t0; window.__m.nStep = (window.__m.nStep || 0) + 1; window.__m.maxFog = Math.max(window.__m.maxFog, w.sim.perf.fogMs); } }, Math.round(chunk * 10)); } };
 const tnow = () => page.evaluate(() => window.world.clock.t);
 
 // Player: some units + two defense tiers (checks the ring keeps the field lane clear).
@@ -60,12 +61,14 @@ for (const min of [5, 10, 15]) {
     console.log('defenses on base fields:', lane);
   }
 }
+await page.evaluate(() => { for (const e of window.world.entities) if (!Number.isFinite(e.x) || !Number.isFinite(e.z) || !Number.isFinite(e.hp)) window.__m.nan++; });
 const m = await page.evaluate(() => window.__m);
 const aiVsAi = Object.entries(m.dmg).filter(([k]) => { const [a, v] = k.split('>').map(Number); return a > 0 && v > 0 && a !== v; }).map(([k, d]) => `${k}:${Math.round(d)}`);
 console.log('AI-vs-AI damage', aiVsAi.join(' ') || 'NONE');
 console.log('dmg on player', Object.entries(m.dmg).filter(([k]) => k.endsWith('>0')).map(([k, d]) => `${k}:${Math.round(d)}`).join(' '), 'firstHitOnPlayer(s)', m.firstHitOnPlayer);
 console.log('waves', m.waves.slice(0, 12).map(w => `${w.t}s ${w.team}->${w.target} x${w.size}`).join(', '));
-console.log('perf', JSON.stringify({ maxFogMs: +m.maxFog.toFixed(3), nanEntities: m.nan, lastStepMs: await page.evaluate(() => +window.world.sim.perf.stepMs.toFixed(2)) }));
+console.log('perf', JSON.stringify({ maxFogMs: +m.maxFog.toFixed(3), nanEntities: m.nan, avgSimStepMs: +(m.sumStep / m.nStep).toFixed(3), maxSimStepMs: +m.maxStep.toFixed(2), paths: await page.evaluate(() => window.world.sim.perf.paths) }));
+await page.evaluate(() => { window.world.clock.speed = 1; });
 await page.evaluate(() => { const w = window.world; w.camTarget.x = -185; w.camTarget.z = 100; w.setView('aerial'); }); await page.waitForTimeout(800); await snap('base-late');
 await browser.close(); server.close();
 if (errors.length) { console.error('ERRORS:\n' + errors.slice(0, 10).join('\n')); process.exit(1); } console.log('OK play');

@@ -26,7 +26,11 @@ const browser = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable
 const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
 const page = await ctx.newPage();
 const errors = [];
-page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+// Optional modules owned by other workers (roster/abilities/heroes) may not exist yet: their 404s aren't errors.
+const optional404 = (m) => /404/.test(m.text()) && /(roster|abilities|abilitybar|heroes)\.js/.test(m.location()?.url || '');
+const pending404 = new Set();
+page.on('requestfailed', () => {}); page.on('response', r => { if (r.status() === 404 && /(roster|abilities|abilitybar|heroes)\.js/.test(r.url())) pending404.add(r.url()); });
+page.on('console', m => { if (m.type() === 'error' && !(optional404(m) || (/404/.test(m.text()) && pending404.size))) errors.push(m.text()); });
 page.on('pageerror', e => errors.push(String(e)));
 
 await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' });

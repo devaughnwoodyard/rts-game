@@ -248,17 +248,17 @@ function mats(theme) {
     glow, fire: fireMat(), smoke: smokeMat(), ember: emberMat(), haze: smokeMat([0.55, 0.3, 0.12], 0.35, true), ...pbrMats(),
   };
   else if (theme === 'X') { // volcanic: glossy obsidian/iron + dark basalt
-    const b = mats('C'), bas = pbr('rocky_terrain_02').clone(); bas.color.setRGB(0.9, 0.82, 0.8); bas.envMapIntensity = 0.5;
-    m = { ...b, stone: bas, solid: new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), metalness: 0.3, roughness: 0.18, envMap: env, envMapIntensity: 1.3 }),
+    const b = mats('C'), bas = pbr('rocky_terrain_02').clone(); bas.color.setRGB(1.35, 1.2, 1.15); bas.envMapIntensity = 0.6;
+    m = { ...b, stone: bas, solid: new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), metalness: 0.3, roughness: 0.18, envMap: env, envMapIntensity: 1.8 }),
       haze: smokeMat([0.6, 0.55, 0.35], 0.3, false) };
   }
   else if (theme === 'I') {
-    m = { conc: pbr('concrete_panels', { dir: 'tex' }), corr: pbr('box_profile_metal_sheet', { dir: 'tex', metal: 0.7, side: T.DoubleSide }),
-      steel: pbr('metal_plate', { metal: 0.65 }), shutter: pbr('painted_metal_shutter', { metal: 0.5 }),
+    m = { conc: pbr('concrete_panels', { dir: 'tex' }), corr: pbr('box_profile_metal_sheet', { dir: 'tex', metal: 0.3, side: T.DoubleSide }),
+      steel: pbr('metal_plate', { metal: 0.35 }), shutter: pbr('painted_metal_shutter', { metal: 0.3 }),
       haz: new T.MeshStandardMaterial({ vertexColors: true, map: hazTex(), metalness: 0.3, roughness: 0.6, envMap: env, envMapIntensity: 0.4 }),
       glow, smoke: smokeMat([0.5, 0.5, 0.52], 0.55, false) };
     for (const k of ['conc', 'corr', 'steel', 'shutter']) m[k].envMapIntensity = 0.7;
-    m.conc.color.setRGB(1.0, 1.08, 1.2);
+    m.conc.color.setRGB(0.92, 1.0, 1.12); m.corr.color.setRGB(1.7, 1.7, 1.7); m.steel.color.setRGB(1.6, 1.6, 1.6);
   }
   else if (theme === 'E') {
     const st = pbr('rocky_terrain_02').clone(); st.color.setRGB(1.7, 1.45, 1.3);
@@ -1073,7 +1073,7 @@ function C_turret_cannon() {
   return fin(g, 'turret_cannon', 3.6);
 }
 function addCannon(t, p, scale, elev = 0) { // glTF cannon_01 (barrel +Z in source) -> +X
-  if (F.dark && !CANNON.dark) { CANNON.dark = CANNON.mat.clone(); CANNON.dark.color.setHex(0x5a4a44); CANNON.dark.emissive = new T.Color(0x3a0800); }
+  if (F.dark && !CANNON.dark) { CANNON.dark = CANNON.mat.clone(); CANNON.dark.color.setHex(0x4a4442); CANNON.dark.emissive = new T.Color(0x140300); }
   const m = new T.Mesh(CANNON.geo, F.dark ? CANNON.dark : CANNON.mat); m.castShadow = m.receiveShadow = true;
   m.position.set(...p); m.rotation.set(0, PI / 2, 0); m.scale.setScalar(scale);
   if (elev) { const piv = new T.Group(); piv.position.set(...p); piv.rotation.z = elev; m.position.set(0, 0, 0); piv.add(m); t.add(piv); } else t.add(m);
@@ -1522,7 +1522,7 @@ function eCrystal(k, p, h, w, tilt = 0, ry = 0) { k.add('glow', new T.Octahedron
 function eFloat(k, p, s, r) { // floating rock fragment (bobs via updateModels) with glowing underside + motes
   if (!k._bob) { k._bob = new Kit(k.theme); (k.subs ||= []).push(['bob', [0, 0, 0], [0, 0, 0], k._bob]); }
   const q = k._bob, w = new T.Vector3(...p).applyMatrix4(k.top()), P = [w.x, w.y, w.z];
-  eBoulder(q, P, s, r, E.rock, 0.6); q.add('glow', cone(s * 0.5, s * 0.9, 5), E.sun, [P[0], P[1] - s * 0.7, P[2]], [PI, 0, 0], 1, { fx: 3.4 });
+  eBoulder(q, P, s, r, E.rock, 0.6);
   k.embers([p[0], p[1] - s, p[2]], 3, s, 0.6);
 }
 function eSteps(k, cx, cz, w, d, h, n, col = E.sand) { // terraced stepped platform
@@ -1580,7 +1580,7 @@ function E_factory() { // rock-cut forge of light: great ring arch over a crysta
   for (let i = 0; i < 8; i++) eBoulder(k, polar(5.0 + r() * 0.6, i / 8 * TAU, 0.3), 0.9 + r() * 0.6, r);
   eSteps(k, 0.3, 0, 10.0, 7.6, 0.4, 2);
   k.add('stone', bbox(4.6, 4.4, 7.0, 0.12), eStone(E.rock), [-2.6, 3.0, 0]);
-  k.add('brick', bbox(0.4, 3.0, 5.0, 0.05), 0xe0c0b0, [-0.15, 2.3, 0]);
+  k.add('stone', bbox(0.4, 3.0, 5.0, 0.05), eStone(E.sand2), [-0.15, 2.3, 0]);
   k.add('stone', torus(3.0, 0.45, 6, 18), eStone(E.sand2), [2.3, 3.4, 0], [0, PI / 2, 0]);           // ring arch
   k.add('gold', torus(3.0, 0.12, 4, 24), E.gold, [2.6, 3.4, 0], [0, PI / 2, 0]);
   for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; k.add('glow', box(0.12, 0.3, 0.3), E.sun, [2.75, 3.4 + Math.sin(a) * 3.0, Math.cos(a) * 3.0], 0, 1, { fx: 3 + i * 0.1 }); }
@@ -1976,7 +1976,7 @@ function decorStorm(k, lx, lz, i, r, ry) {
 
 // ======================================================================= VANGUARD: INDUSTRIAL (team 0)
 // Riveted steel + poured concrete, steel-blue panels, hazard stripes, smokestacks, cranes, sodium floodlights.
-const I = { blue: 0x2f5f8f, blue2: 0x244a70, conc: 0xd0ccc4, conc2: 0xa8a49c, steel: 0x4a5058, dark: 0x2a2e33, yellow: 0xe8b420, tire: 0x1c1c1e,
+const I = { blue: 0x2f6fa8, blue2: 0x285a88, conc: 0xc8ccd0, conc2: 0xa4a8ac, steel: 0x4a5058, dark: 0x2a2e33, yellow: 0xe8b420, tire: 0x1c1c1e,
   rust: 0xc0a090, sodium: 0xffa040, cyan: 0x39d8ff, beacon: 0x3a8cff, red: 0xff3020, white: 0xfff0d8 };
 function hazTex() {
   if (TEX.haz) return TEX.haz;
@@ -2292,7 +2292,7 @@ function E_sunwing() {
 }
 function E_glider() {
   const k = new Kit('E');
-  k.add('jacq', gc('delta', () => { const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute([1.2, 0, 0, -0.9, 0.12, 1.8, -0.9, 0.12, -1.8, 1.2, 0, 0, -0.9, 0.12, -1.8, -0.9, 0.12, 1.8], 3)); g.setAttribute('uv', new T.Float32BufferAttribute([0.5, 1, 0, 0, 1, 0, 0.5, 1, 1, 0, 0, 0], 2)); g.computeVertexNormals(); return g; }), 0xe8b648, [0, 0.4, 0], 0, 1, { smooth: true });
+  k.add('gold', gc('delta', () => { const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute([1.2, 0, 0, -0.9, 0.12, 1.8, -0.9, 0.12, -1.8, 1.2, 0, 0, -0.9, 0.12, -1.8, -0.9, 0.12, 1.8], 3)); g.setAttribute('uv', new T.Float32BufferAttribute([0.5, 1, 0, 0, 1, 0, 0.5, 1, 1, 0, 0, 0], 2)); g.computeVertexNormals(); return g; }), 0xe8b648, [0, 0.4, 0], 0, 1, { smooth: true });
   k.bar('gold', [1.2, 0.4, 0], [-0.9, 0.52, 1.8], 0.05, E.gold); k.bar('gold', [1.2, 0.4, 0], [-0.9, 0.52, -1.8], 0.05, E.gold); k.bar('gold', [-0.9, 0.52, -1.8], [-0.9, 0.52, 1.8], 0.04, E.gold);
   k.add('stone', prism([[-0.6, -0.15], [0.5, -0.12], [0.8, 0], [0.4, 0.15], [-0.5, 0.12]], 0.35, 0.03), eStone(E.rock2), [0, 0, 0]);
   k.add('glow', box(0.5, 0.04, 0.04), E.sun, [-0.9, 0.52, 0], 0, 1, { fx: 3.4 });

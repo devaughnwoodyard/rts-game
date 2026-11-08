@@ -177,10 +177,25 @@ function fireMat() {
   m.customProgramCacheKey = () => 'vgfire';
   return m;
 }
-function smokeMat() {
+function emberMat() {
   return new T.ShaderMaterial({
-    uniforms: { uTime: U.time, uColor: { value: new T.Vector3(0.16, 0.14, 0.13) } },
-    transparent: true, depthWrite: false,
+    uniforms: { uTime: U.time }, transparent: true, depthWrite: false, blending: T.AdditiveBlending,
+    vertexShader: `uniform float uTime; attribute vec3 aBase; attribute vec2 aPS; varying float vA; varying float vK; varying vec2 vUv;
+      void main(){ float k = fract(uTime * 0.45 + aPS.x);
+        vec4 wb = modelMatrix * vec4(aBase, 1.0);
+        wb.xyz += vec3(sin(aPS.x * 50.0 + uTime * 3.0) * 0.4 * k, k * 4.0 * aPS.y, cos(aPS.x * 31.0 + uTime * 2.3) * 0.4 * k);
+        vec4 mv = viewMatrix * wb; float sz = 0.2 * aPS.y * (1.0 - 0.5 * k);
+        mv.xy += position.xy * sz; gl_Position = projectionMatrix * mv;
+        vA = (1.0 - k) * smoothstep(0.0, 0.05, k) * (0.7 + 0.3 * sin(uTime * 20.0 + aPS.x * 90.0)); vK = k; vUv = position.xy; }`,
+    fragmentShader: `varying float vA; varying float vK; varying vec2 vUv;
+      void main(){ float d = length(vUv) * 2.0; float a = (1.0 - smoothstep(0.2, 1.0, d)) * vA; if (a < 0.02) discard;
+        gl_FragColor = vec4(mix(vec3(1.0, 0.8, 0.35), vec3(1.0, 0.25, 0.05), vK) * 1.6, a); }`,
+  });
+}
+function smokeMat(col = [0.16, 0.14, 0.13], alpha = 0.75, additive = false) {
+  return new T.ShaderMaterial({
+    uniforms: { uTime: U.time, uColor: { value: new T.Vector3(...col) }, uAlpha: { value: alpha } },
+    transparent: true, depthWrite: false, blending: additive ? T.AdditiveBlending : T.NormalBlending,
     vertexShader: `uniform float uTime; attribute vec3 aBase; attribute vec2 aPS; varying float vA; varying vec2 vUv;
       void main(){ float k = fract(uTime * 0.2 + aPS.x);
         vec4 wb = modelMatrix * vec4(aBase, 1.0);
@@ -188,8 +203,8 @@ function smokeMat() {
         vec4 mv = viewMatrix * wb; float sz = aPS.y * (0.8 + k * 3.2);
         mv.xy += position.xy * sz; gl_Position = projectionMatrix * mv;
         vA = smoothstep(0.0, 0.1, k) * (1.0 - k); vUv = position.xy; }`,
-    fragmentShader: `uniform vec3 uColor; varying float vA; varying vec2 vUv;
-      void main(){ float d = length(vUv) * 2.0; float a = (1.0 - smoothstep(0.3, 1.0, d)) * vA * 0.75; if (a < 0.01) discard; gl_FragColor = vec4(uColor * (1.2 - d * 0.4), a); }`,
+    fragmentShader: `uniform vec3 uColor; uniform float uAlpha; varying float vA; varying vec2 vUv;
+      void main(){ float d = length(vUv) * 2.0; float a = (1.0 - smoothstep(0.3, 1.0, d)) * vA * uAlpha; if (a < 0.01) discard; gl_FragColor = vec4(uColor * (1.2 - d * 0.4), a); }`,
   });
 }
 const MATS = {};
@@ -203,8 +218,9 @@ function pbr(name, opts = {}) {
   return (PBR[name] = new T.MeshStandardMaterial({ vertexColors: true, map, normalMap: ld('nor_gl.jpg', false), normalScale: new T.Vector2(1, 1),
     roughnessMap: arm, metalnessMap: arm, roughness: 1, metalness: opts.metal ?? 0, envMap: envTex(), envMapIntensity: 0.3, side: opts.side ?? T.FrontSide }));
 }
+function stoneMat() { const m = pbr('rocky_terrain_02'); m.color.setRGB(1.9, 1.55, 1.3); return m; }
 function pbrMats() { return { brick: pbr('medieval_red_brick'), denim: pbr('denim_fabric_04', { side: T.DoubleSide }), jacq: pbr('quatrefoil_jacquard_fabric', { side: T.DoubleSide }) }; }
-const UVK = { brick: 0.42, denim: 0.45, jacq: 0.6 };
+const UVK = { brick: 0.42, denim: 0.45, jacq: 0.6, stone: 0.22 };
 let CANNON = null;
 function mats(theme) {
   if (MATS[theme]) return MATS[theme];
@@ -220,8 +236,9 @@ function mats(theme) {
   };
   else if (theme === 'C') m = {
     scrap: new T.MeshStandardMaterial({ vertexColors: true, map: rustTex(), metalness: 0.45, roughness: 0.7, envMap: env, envMapIntensity: 0.4 }),
-    solid: new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), metalness: 0.3, roughness: 0.7, envMap: env, envMapIntensity: 0.35 }),
-    glow, fire: fireMat(), smoke: smokeMat(), ...pbrMats(),
+    solid: new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), metalness: 0.6, roughness: 0.45, envMap: env, envMapIntensity: 0.8 }),
+    stone: stoneMat(),
+    glow, fire: fireMat(), smoke: smokeMat(), ember: emberMat(), haze: smokeMat([0.55, 0.3, 0.12], 0.35, true), ...pbrMats(),
   };
   else m = {
     crystal: new T.MeshStandardMaterial({ color: 0x2fd8ff, emissive: 0x0f9fd8, emissiveIntensity: 1.0, metalness: 0.15, roughness: 0.25, transparent: true, opacity: 0.9, flatShading: true, envMap: env, envMapIntensity: 1.2 }),
@@ -280,7 +297,7 @@ const polar = (r, a, y = 0) => [Math.sin(a) * r, y, Math.cos(a) * r]; // matches
 
 // ---------------------------------------------------------------- Kit: collects geometry per material slot, merges on build
 class Kit {
-  constructor(theme) { this.theme = theme; this.s = {}; this.st = [null]; this.smokes = []; }
+  constructor(theme) { this.theme = theme; this.s = {}; this.st = [null]; this.parts = { smoke: [], ember: [], haze: [] }; }
   top() { return this.st[this.st.length - 1] || new T.Matrix4(); }
   push(p, r, s) { this.st.push(this.top().clone().multiply(M4(p, r, s))); return this; }
   pop() { this.st.pop(); return this; }
@@ -329,7 +346,11 @@ class Kit {
     this.add('fire', cone(1, 1, 6), grad(0xfff0a0, 0xff6010, y0w, h * 0.6), [p[0], p[1] + h * 0.3, p[2]], [0, 1, 0], [r * 0.55, h * 0.6, r * 0.55], { base });
     return this;
   }
-  smoke(p, n = 4, size = 1) { const v = new T.Vector3(...p).applyMatrix4(this.top()); for (let i = 0; i < n; i++) this.smokes.push([v.x, v.y, v.z, i / n + Math.random() * 0.1, size]); return this; }
+  particles(kind, p, n, size, spread = 0) { const v = new T.Vector3(...p).applyMatrix4(this.top());
+    for (let i = 0; i < n; i++) this.parts[kind].push([v.x + (Math.random() - 0.5) * spread, v.y, v.z + (Math.random() - 0.5) * spread, i / n + Math.random() * 0.13, size]); return this; }
+  smoke(p, n = 4, size = 1) { return this.particles('smoke', p, n, size); }
+  embers(p, n = 8, spread = 0.6, size = 1) { return this.particles('ember', p, n, size, spread); }
+  haze(p, n = 3, size = 1) { return this.particles('haze', p, n, size); }
   sign(p, ry, w, h, cell, fx = 2, color = 0xffffff, rx = 0) {
     if (this.theme === 'V') this.add('lit', box(w + 0.12, h + 0.12, 0.06), V.glass, [p[0] - Math.sin(ry) * 0.06, p[1], p[2] - Math.cos(ry) * 0.06], [rx, ry, 0]);
     return this.add('holo', plane(w, h), color, p, [rx, ry, 0], [1, 1, 1], { uv: cellUV(cell), fx: fx + Math.random() * 0.9, smooth: true }); }
@@ -347,17 +368,18 @@ class Kit {
       if (slot === 'glow' || slot === 'holo' || slot === 'energy' || slot === 'fire') mesh.frustumCulled = slot !== 'holo' && slot !== 'glow' ? false : true;
       grp.add(mesh);
     }
-    if (this.smokes.length) {
-      const n = this.smokes.length, pos = new Float32Array(n * 12), ab = new Float32Array(n * 12), ps = new Float32Array(n * 8), idx = [];
+    for (const [kind, list] of Object.entries(this.parts)) {
+      if (!list.length) continue;
+      const n = list.length, pos = new Float32Array(n * 12), ab = new Float32Array(n * 12), ps = new Float32Array(n * 8), idx = [];
       const corners = [-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5];
-      this.smokes.forEach(([x, y, z, ph, sz], i) => {
+      list.forEach(([x, y, z, ph, sz], i) => {
         for (let c = 0; c < 4; c++) { pos.set([corners[c * 2], corners[c * 2 + 1], 0], (i * 4 + c) * 3); ab.set([x, y, z], (i * 4 + c) * 3); ps.set([ph, sz], (i * 4 + c) * 2); }
         idx.push(i * 4, i * 4 + 1, i * 4 + 2, i * 4, i * 4 + 2, i * 4 + 3);
       });
       const g = new T.BufferGeometry();
       g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setAttribute('aBase', new T.BufferAttribute(ab, 3)); g.setAttribute('aPS', new T.BufferAttribute(ps, 2));
       g.setIndex(idx);
-      const mesh = new T.Mesh(g, M.smoke || mats('C').smoke); mesh.frustumCulled = false; mesh.renderOrder = 3; mesh.raycast = () => {};
+      const mesh = new T.Mesh(g, M[kind] || mats('C')[kind]); mesh.frustumCulled = false; mesh.renderOrder = 3; mesh.raycast = () => {};
       grp.add(mesh);
     }
     return grp;
@@ -509,7 +531,16 @@ function V_cc() {
   }
   // holo signs on tier-1 faces
   for (const [a, cell] of [[PI / 2 + 0.6, 0], [PI / 2 - 0.65, 1], [PI + 0.2, 2], [-0.2, 0]]) {
-    const p = polar(7.2, a, 2.0); k.sign(p, a - PI / 2 + PI / 2, 1.6, 2.6, cell, 2);
+    const p = polar(7.25, a, 2.0); k.sign(p, a, 2.0, 2.4, cell, 2, 0xffffff, -0.25);
+  }
+  // dark jacquard hanging banners with neon trim on tier 2
+  for (const a of [PI / 2 + 0.55, PI / 2 - 0.55, -PI / 2]) {
+    const p = polar(5.25, a, 4.5);
+    k.add('jacq', cloth(1.3, 2.8, 0.03, 0.05), 0x30364c, p, [0, a, 0], 1, { smooth: true });
+    const tx = Math.cos(a) * 0.68, tz = -Math.sin(a) * 0.68, n = polar(0.05, a);
+    for (const sd of [1, -1]) k.bar('glow', [p[0] + tx * sd + n[0], 3.1, p[2] + tz * sd + n[2]], [p[0] + tx * sd + n[0], 5.9, p[2] + tz * sd + n[2]], 0.05, sd > 0 ? V.cyan : V.mag);
+    k.bar('glow', [p[0] - tx + n[0], 5.92, p[2] - tz + n[2]], [p[0] + tx + n[0], 5.92, p[2] + tz + n[2]], 0.08, V.cyan);
+    k.sign([p[0] + n[0] * 2, 4.6, p[2] + n[2] * 2], a, 0.8, 0.8, 5, 3);
   }
   // main door on +X face
   k.add('lit', bbox(1.2, 2.2, 3.2, 0.08), V.trim, [7.2, 1.3, 0]);
@@ -543,6 +574,7 @@ function V_barracks() {
   k.sign([0.8, 2.4, 3.05], 0, 2.2, 1.4, 2, 2);
   k.sign([-3.0, 4.2, -3.2], PI, 1.2, 2.0, 1, 2);
   k.sign([3.9, 4.3, 0], PI / 2, 1.0, 1.6, 0, 2);
+  k.sign([-0.6, 6.0, 0.4], 0, 3.4, 1.2, 5, 2, 0xffffff, -0.8);
   vAntenna(k, [-2.6, 5.2, 0.6], 2.4); vAntenna(k, [-3.2, 4.8, -0.9], 1.6, V.cyan);
   k.add('lit', bbox(1.2, 0.6, 1.0, 0.06), V.trim, [1.6, 5.35, 0.2]); k.add('glow', cyl(0.35, 0.35, 0.05, 8), V.cyan, [1.6, 5.68, 0.2], 0, 1, { fx: 3.1 });
   return fin(k.build(), 'barracks', 5.8);
@@ -581,6 +613,9 @@ function V_factory() {
   k.line('lit', [5.3, 6.4, 1.0], [5.3, 3.4, 1.0], 0.03, V.steel, 4);
   k.add('lit', bbox(1.4, 1.0, 1.4, 0.08), V.blue, [5.3, 2.9, 1.0], [0, 0.3, 0]);
   k.sign([-2.4, 3.0, 3.66], 0, 2.6, 1.4, 2, 2);
+  for (const x of [-4.8, -0.6]) k.bar('lit', [x, 6.15, 0], [x, 7.2, 0], 0.12, V.trim);
+  k.sign([-2.7, 7.6, 0], 0, 4.6, 1.5, 2, 2, 0xffffff, -0.75);
+  vNeonRect(k, -5.2, 0.6, 4.92, -3.65, 3.65, V.cyan, 0.08);
   k.sign([-5.15, 2.6, 0], -PI / 2, 1.4, 2.4, 0, 2);
   vAntenna(k, [-1.0, 6.3, -2.6], 2.0);
   return fin(k.build(), 'factory', 7.4);
@@ -695,7 +730,23 @@ function cSkull(k, p, s = 1, ry = 0) { // abstract horned skull totem head
   for (const z of [1, -1]) { k.spike('solid', [0, 0.2, z * 0.3], [0.2, 0.6, z * 0.9], 0.8, 0.12, C.bone); k.spike('solid', [0.05, 0.55, z * 0.85], [0.4, 1, z * 0.1], 0.5, 0.07, C.bone); }
   k.pop();
 }
-function cTotem(k, p, h = 3) { k.line('solid', p, [p[0], p[1] + h, p[2]], 0.09, C.soot, 5); k.bar('solid', [p[0], p[1] + h * 0.7, p[2] - 0.5], [p[0], p[1] + h * 0.7, p[2] + 0.5], 0.08, C.rust2); cSkull(k, [p[0], p[1] + h + 0.2, p[2]], 1); }
+function cBanner(k, p, h = 5, w = 1.1, col = C.red, ry = 0) { // pole + red jacquard war banner
+  k.line('solid', p, [p[0], p[1] + h, p[2]], 0.08, C.soot, 5);
+  k.push(p, [0, ry, 0]);
+  k.bar('solid', [0, h - 0.1, 0], [0, h - 0.1, w + 0.1], 0.08, C.soot);
+  k.add('jacq', cloth(w, h * 0.45, 0.05, 0.08), col, [0, h - 0.15 - h * 0.225, w / 2 + 0.05], [0, PI / 2, 0], 1, { smooth: true });
+  k.spike('solid', [0, h, 0], [0, 1, 0], 0.5, 0.08, C.bone);
+  k.pop();
+}
+function cTarp(k, p, ry, w, d, h, col = 0x9c9a8c) { // denim tarp on 4 poles
+  k.push(p, [0, ry, 0]);
+  for (const sx of [1, -1]) for (const sz of [1, -1]) k.line('solid', [sx * w / 2, 0, sz * d / 2], [sx * w / 2, h + (sx > 0 ? 0.3 : 0), sz * d / 2], 0.06, C.steel2, 5);
+  k.push([0, h + 0.15, 0], [0, 0, -0.08]); k.add('denim', cloth(w + 0.2, d + 0.2, 0.35, 0.04), col, [0, 0, 0], [-PI / 2, 0, 0], 1, { smooth: true }); k.pop();
+  k.pop();
+}
+function cAwning(k, p, ry, tilt, w, d, col = 0x9c9a8c) { k.push(p, [0, ry, tilt]); k.add('denim', cloth(w, d, 0.25, 0.03), col, [0, 0, 0], [-PI / 2, 0, 0], 1, { smooth: true }); k.pop(); }
+function cTotem(k, p, h = 3) { k.line('solid', p, [p[0], p[1] + h, p[2]], 0.09, C.soot, 5); k.bar('solid', [p[0], p[1] + h * 0.7, p[2] - 0.5], [p[0], p[1] + h * 0.7, p[2] + 0.5], 0.08, C.rust2); cSkull(k, [p[0], p[1] + h + 0.2, p[2]], 1);
+  k.add('jacq', cloth(0.6, 1.0, 0.02, 0.06), C.red, [p[0], p[1] + h * 0.7 - 0.55, p[2] + 0.3], [0, 0.2, 0], 1, { smooth: true }); }
 function cContainer(k, p, ry, L, col, s = 1) {
   k.push(p, [0, ry, 0], s);
   k.add('scrap', box(L, 2.3, 2.3), col, [0, 1.2, 0]);
@@ -837,9 +888,10 @@ function C_harvester() {
 }
 function C_cc() {
   const k = new Kit('C'), r = rng(131);
-  // scrap mound base
-  k.add('solid', cyl(7.6, 8.6, 0.6, 9), C.dirt, [0, 0.3, 0]);
-  for (let i = 0; i < 14; i++) { const a = r() * TAU, d = 5 + r() * 3; k.add(r() < 0.5 ? 'scrap' : 'solid', box(0.8 + r() * 1.6, 0.3 + r() * 0.5, 0.6 + r() * 1.2), pick(r, [C.rust, C.rust2, C.steel2, C.rust3]), polar(d, a, 0.6), [(r() - 0.5) * 0.6, r() * 3, (r() - 0.5) * 0.6]); }
+  // brick plinth + scrap mound
+  k.add('brick', cyl(7.9, 8.6, 0.8, 9), 0xc9a48c, [0, 0.4, 0]);
+  k.add('solid', cyl(7.5, 7.7, 0.12, 9), C.dirt, [0, 0.82, 0]);
+  for (let i = 0; i < 14; i++) { const a = r() * TAU, d = 5 + r() * 3; k.add(r() < 0.5 ? 'scrap' : 'solid', box(0.8 + r() * 1.6, 0.3 + r() * 0.5, 0.6 + r() * 1.2), pick(r, [C.rust, C.rust2, C.steel2, C.rust3]), polar(d, a, 0.85), [(r() - 0.5) * 0.6, r() * 3, (r() - 0.5) * 0.6]); }
   // crashed war-rig, nose-down, across the front
   k.push([2.2, 0, 1.6], [0, 0.35, 0]);
   k.add('scrap', bbox(4.6, 3.4, 3.6, 0.15), C.red, [2.3, 1.7, 0], [0, 0, -0.18]);
@@ -850,32 +902,34 @@ function C_cc() {
   for (const z of [-1.5, -0.75, 0, 0.75, 1.5]) cSpike(k, [4.95, 0.35, z], [1, 0.15, 0], 1.0, 0.12);
   for (const z of [1.3, -1.3]) k.add('glow', box(0.14, 0.3, 0.4), C.amber, [4.65, 2.0, z], [0, 0, -0.18], 1, { fx: 3.5 });
   k.add('solid', box(0.1, 1.0, 2.6), 0x241510, [3.45, 2.75, 0], [0, 0, -0.55]);
+  for (const zz of [1, -1]) { cTire(k, [3.4, 0.95, zz * 1.95], 1.15, true); cTire(k, [0.9, 1.3, zz * 1.95], 1.15, true); k.add('solid', cyl(0.3, 0.3, 0.5, 8), C.steel, [3.4, 0.95, zz * 1.95], [PI / 2, 0, 0]); }
+  k.add('solid', bbox(1.0, 2.6, 3.4, 0.08), C.soot, [0.0, 2.0, 0], [0, 0, -0.1]);
+  for (const zz of [1.2, -1.2]) k.line('solid', [0.2, 3.2, zz], [0.0, 4.6, zz], 0.12, C.steel, 6);
   for (const s of [1, -1]) { k.line('solid', [0.6, 3.0, s * 1.5], [0.4, 6.0, s * 1.5], 0.2, C.soot, 8); k.flame([0.4, 6.0, s * 1.5], 1.6, 0.35); k.smoke([0.4, 6.4, s * 1.5], 5, 1.4); }
   k.pop();
-  // trailer half-buried behind
-  cContainer(k, [-1.2, -0.3, 2.6], 0.35 + PI, 6.5, C.rust, 1);
+  // trailer half-buried behind, denim tarp lashed over it
+  cContainer(k, [-1.2, 0.0, 2.6], 0.35 + PI, 6.5, C.rust, 1);
+  k.add('denim', cloth(4.2, 2.8, 0.4, 0.05), 0xa09a88, [-1.6, 2.55, 2.75], [PI / 2, 0, -0.35], [1, 1, 1], { smooth: true });
   // scrap tower: stacked containers + scaffold watchtower + totem
-  cContainer(k, [-3.0, 0.4, -2.2], 0.2, 5.0, C.rust2);
-  cContainer(k, [-3.2, 2.8, -2.4], -0.35, 4.2, C.red);
-  cContainer(k, [-3.0, 5.2, -2.1], 0.6, 3.4, C.bone, 0.95);
-  cScaffold(k, [-3.0, 7.4, -2.1], 2.4, 2.4);
-  k.flame([-2.0, 9.9, -1.2], 1.4, 0.3); k.smoke([-2.0, 10.4, -1.2], 4, 1.2);
-  cTotem(k, [-4.0, 9.8, -3.0], 2.4);
-  cPlates(k, r, 6, -5, -1, 1, 6, -3.6);
+  k.add('brick', bbox(5.4, 1.6, 4.0, 0.06), 0xc49a84, [-3.0, 1.6, -2.2], [0, 0.2, 0]);
+  k.add('brick', bbox(1.4, 0.7, 1.2, 0.05), 0xb88a74, [-0.9, 1.15, -3.6], [0, 0.6, 0.1]);
+  cContainer(k, [-3.0, 2.4, -2.2], 0.2, 5.0, C.rust2);
+  cContainer(k, [-3.2, 4.8, -2.4], -0.35, 4.2, C.red);
+  cContainer(k, [-3.0, 7.2, -2.1], 0.6, 3.4, C.bone, 0.95);
+  cScaffold(k, [-3.0, 9.4, -2.1], 2.4, 2.4);
+  k.flame([-2.0, 11.9, -1.2], 1.4, 0.3); k.smoke([-2.0, 12.4, -1.2], 4, 1.2);
+  cTotem(k, [-4.0, 11.8, -3.0], 2.4);
+  cPlates(k, r, 6, -5, -1, 3, 8, -3.6);
   // flame jets on the trailer roof (pipes)
   for (const p of [[-0.2, 2.6, 4.0], [-2.6, 2.6, 2.3]]) { k.line('solid', [p[0], 1.6, p[2]], p, 0.16, C.steel2, 6); k.flame(p, 1.2, 0.26); }
   // tire walls + drums + spikes ring
-  for (let i = 0; i < 18; i++) { const a = i / 18 * TAU + 0.1; if (Math.cos(a) > 0.6 && Math.abs(Math.sin(a)) < 0.6) continue; for (let h = 0; h < 2 + (i % 2); h++) cTire(k, polar(7.6, a, 0.75 + h * 0.32), 0.62); }
+  for (let i = 0; i < 18; i++) { const a = i / 18 * TAU + 0.1; if (Math.cos(a) > 0.6 && Math.abs(Math.sin(a)) < 0.6) continue; for (let h = 0; h < 2 + (i % 2); h++) cTire(k, polar(7.6, a, 1.0 + h * 0.32), 0.62); }
   for (let i = 0; i < 12; i++) { const a = i / 12 * TAU + 0.25, b = polar(8.1, a, 0.5); cSpike(k, b, [Math.sin(a), 0.6, Math.cos(a)], 1.3, 0.12); }
-  cDrum(k, [5.5, 0.6, -3.6], C.red, true); cDrum(k, [6.1, 0.6, -2.9], C.rust); cDrum(k, [-6.0, 0.6, 2.2], C.rust3, true);
-  // war banners
-  for (const p of [[3.5, 0.6, -5.5], [-5.5, 0.6, 3.8], [0.5, 0.6, -6.6]]) {
-    k.line('solid', p, [p[0], p[1] + 5, p[2]], 0.08, C.soot, 5); k.bar('solid', [p[0], p[1] + 4.9, p[2]], [p[0], p[1] + 4.9, p[2] + 1.2], 0.08, C.soot);
-    k.add('solid', box(0.05, 2.0, 1.1), C.red, [p[0], p[1] + 3.85, p[2] + 0.6], [0.05, 0, 0.04]);
-    k.add('solid', box(0.06, 0.4, 0.4), C.bone, [p[0], p[1] + 4.0, p[2] + 0.6]);
-  }
+  cDrum(k, [5.5, 0.85, -3.6], C.red, true); cDrum(k, [6.1, 0.85, -2.9], C.rust); cDrum(k, [-6.0, 0.85, 2.2], C.rust3, true);
+  // red jacquard war banners
+  for (const [p, ry] of [[[3.5, 0.85, -5.5], 0.4], [[-5.5, 0.85, 3.8], -0.3], [[0.5, 0.85, -6.6], 0], [[6.4, 0.85, 3.0], 1.2]]) cBanner(k, p, 6, 1.3, C.red, ry);
   cBarbed(k, [-6.8, 1.6, 3.6], [-3.5, 1.6, 6.8]);
-  return fin(k.build(), 'cc', 12);
+  return fin(k.build(), 'cc', 13);
 }
 function C_barracks() {
   const k = new Kit('C'), r = rng(141);
@@ -883,15 +937,17 @@ function C_barracks() {
   cContainer(k, [-0.6, 0.25, -1.55], 0, 7.0, C.rust);
   cContainer(k, [-0.6, 0.25, 1.15], 0, 7.0, C.red);
   cContainer(k, [-1.2, 2.65, -0.2], 0.12, 5.2, C.rust2);
-  // lean-to corrugated roof over the door side
-  k.add('scrap', box(2.0, 0.08, 6.6), C.rust3, [3.6, 3.0, -0.2], [0, 0, -0.35]);
+  // denim awning over the door side
+  cAwning(k, [3.65, 2.95, -0.2], 0, -0.35, 2.3, 6.8);
+  k.add('brick', bbox(0.5, 1.8, 5.6, 0.05), 0xc49a84, [-4.25, 1.15, -0.2]);
   for (const z of [-3.2, 2.8]) k.bar('solid', [4.4, 0.25, z], [4.4, 2.75, z], 0.14, C.steel2);
   k.add('solid', box(0.15, 2.0, 1.6), 0x1e1612, [2.95, 1.25, 0.1]);
   for (let i = 0; i < 4; i++) k.add('solid', box(0.06, 0.08, 1.6), C.steel, [3.02, 0.6 + i * 0.45, 0.1]);
   k.add('glow', box(0.1, 0.12, 1.2), C.amber, [3.02, 2.38, 0.1], 0, 1, { fx: 3.4 });
   // war paint stripes + plates
   for (const s of [1, -1]) cPlates(k, r, 5, -3.8, 2.5, 0.6, 2.2, s * (s > 0 ? 2.32 : 2.72));
-  k.add('solid', box(0.06, 0.5, 6.4), C.bone, [-4.08, 1.6, -0.2]);
+  k.add('solid', box(0.06, 0.5, 6.4), C.bone, [-4.52, 1.75, -0.2]);
+  cBanner(k, [4.6, 0.25, -3.4], 4.6, 1.0, C.red, -0.3); cBanner(k, [4.6, 0.25, 3.2], 4.6, 1.0, 0x8c1c1a, 0.3);
   cSkull(k, [3.05, 3.4, 0.1], 0.8, 0);
   // stack w/ fire, burning barrel, tires
   k.line('solid', [-3.4, 4.9, 1.0], [-3.5, 7.0, 1.0], 0.22, C.soot, 8); k.flame([-3.5, 7.0, 1.0], 1.0, 0.25); k.smoke([-3.5, 7.4, 1.0], 4, 1.0);
@@ -907,13 +963,17 @@ function C_factory() {
   k.add('solid', bbox(11, 0.25, 8.4, 0.06), C.dirt, [0.3, 0.12, 0]);
   // corrugated shed (back block) + open bay walls
   k.add('scrap', box(5.6, 4.4, 7.2), C.rust, [-2.3, 2.45, 0]);
+  k.add('brick', bbox(5.8, 1.6, 7.4, 0.05), 0xc49a84, [-2.3, 1.05, 0]);
+  k.add('brick', bbox(2.0, 1.0, 0.3, 0.04), 0xb88a74, [-3.6, 2.3, 3.62]);
   for (const s of [1, -1]) k.add('scrap', box(4.2, 4.0, 0.3), s > 0 ? C.red : C.rust2, [2.6, 2.25, s * 3.4], [0, 0, s * 0.02]);
   k.add('scrap', box(4.8, 0.1, 7.6), C.rust3, [2.7, 4.5, 0], [0, 0, -0.12]);
+  cAwning(k, [5.55, 4.0, 0], 0, -0.5, 1.9, 7.4);
+  cBanner(k, [-5.3, 0.25, 3.6], 6.5, 1.3, C.red, PI);
   k.add('scrap', box(6.0, 0.1, 4.0), C.rust2, [-2.3, 5.0, 1.8], [0.25, 0, 0]);
   k.add('scrap', box(6.0, 0.1, 4.0), C.rust, [-2.3, 5.0, -1.8], [-0.25, 0, 0]);
   k.add('solid', box(0.2, 3.8, 6.4), 0x1e1612, [0.52, 2.2, 0]);
   k.add('glow', box(0.12, 0.2, 5.0), C.amber, [0.66, 3.9, 0], 0, 1, { fx: 3.2 });
-  cPlates(k, r, 8, -4.8, 0.2, 0.6, 4.0, 3.62); cPlates(k, r, 6, -4.8, 0.2, 0.6, 4.0, -3.62);
+  cPlates(k, r, 6, -4.8, 0.2, 1.9, 4.0, 3.62); cPlates(k, r, 5, -4.8, 0.2, 1.9, 4.0, -3.62);
   k.add('scrap', box(0.06, 0.8, 7.0), C.red, [-5.12, 3.2, 0]);
   // scrap crane w/ hanging hulk
   for (const s of [1, -1]) k.bar('solid', [5.2, 0.25, s * 3.6], [5.0, 7.2, s * 3.2], 0.32, C.steel2);
@@ -971,6 +1031,11 @@ function C_turret_cannon() {
   const tur = t.build('turret'); tur.position.y = 2.5; g.add(tur);
   return fin(g, 'turret_cannon', 3.6);
 }
+function addCannon(t, p, scale, elev = 0) { // glTF cannon_01 (barrel +Z in source) -> +X
+  const m = new T.Mesh(CANNON.geo, CANNON.mat); m.castShadow = m.receiveShadow = true;
+  m.position.set(...p); m.rotation.set(0, PI / 2, 0); m.scale.setScalar(scale);
+  if (elev) { const piv = new T.Group(); piv.position.set(...p); piv.rotation.z = elev; m.position.set(0, 0, 0); piv.add(m); t.add(piv); } else t.add(m);
+}
 function C_artillery() {
   const k = new Kit('C'), r = rng(181);
   k.add('solid', bbox(4.2, 0.3, 4.2, 0.08), C.dirt, [0, 0.15, 0]);
@@ -1002,6 +1067,10 @@ function C_wall(variant) {
   } else if (variant === 1) { // container chunk
     cContainer(k, [0, 0, 0], 0, 4.0, pick(r, [C.rust, C.red, C.rust2]), 0.66);
     k.add('scrap', box(3.8, 0.05, 1.6), C.rust3, [0, 1.6, 0], [0.05, 0, 0.04]);
+  } else if (variant === 3) { // patched brick section
+    k.add('brick', bbox(3.9, 1.5, 1.2, 0.05), 0xc49a84, [0, 0.75, 0]);
+    for (const x of [-1.4, -0.3, 0.9]) k.add('brick', bbox(0.9 + r() * 0.4, 0.3 + r() * 0.4, 1.1, 0.04), 0xb88a74, [x, 1.6, 0], [0, 0, (r() - 0.5) * 0.2]);
+    cPlates(k, r, 3, -1.6, 1.6, 0.4, 1.2, 0.62); cPlates(k, r, 3, -1.6, 1.6, 0.4, 1.2, -0.62);
   } else { // spiked tire barricade
     for (let x = -1.5; x <= 1.51; x += 1.0) for (let h = 0; h < 3; h++) cTire(k, [x + (h % 2) * 0.25, 0.25 + h * 0.36, 0], 0.65);
     k.add('solid', box(3.8, 0.12, 0.12), C.steel2, [0, 1.25, 0]);
@@ -1026,6 +1095,7 @@ function C_gate() {
   }
   k.bar('solid', [0, 5.0, -2.5], [0, 5.0, 2.5], 0.3, C.rust3);
   cSkull(k, [0.2, 5.6, 0], 1.0, 0);
+  for (const z of [1, -1]) k.add('jacq', cloth(1.2, 2.4, 0.04, 0.1), C.red, [0.75, 3.6, z * 2.5], [0, PI / 2, 0], 1, { smooth: true });
   // war-rig grille hanging on chains
   k.add('scrap', bbox(0.3, 3.2, 3.4, 0.06), C.red, [0, 2.05, 0]);
   for (let z = -1.45; z <= 1.46; z += 0.29) k.add('solid', box(0.14, 2.9, 0.09), C.steel, [0.12, 2.05, z]);
@@ -1033,6 +1103,349 @@ function C_gate() {
   for (const z of [-1.3, 1.3]) { k.add('glow', box(0.08, 0.3, 0.4), C.amber, [0.25, 3.0, z * 0.85], 0, 1, { fx: 3.4 }); for (let y = 3.8; y < 4.95; y += 0.16) k.add('solid', torus(0.07, 0.022, 3, 6), C.steel2, [0, y, z], [0, (y * 10 | 0) % 2 ? PI / 2 : 0, 0]); }
   for (const z of [-1.2, -0.4, 0.4, 1.2]) cSpike(k, [0.15, 0.45, z], [0.3, -1, 0], 0.5, 0.08, C.steel);
   return fin(k.build(), 'gate', 6.0);
+}
+
+// ======================================================================= CRIMSON PACT: Desert Forgemasters
+// Carved sandstone + forged iron + molten seams. Vehicles: low, fast dune racers with iron ram prows.
+const F = { sand: 0xd08a58, sand2: 0xe0a070, rock: 0x9a4a2c, rock2: 0x7a2e1c, iron: 0x2b2724, iron2: 0x433b36, steel: 0x6a625c,
+  red: 0xc8322e, red2: 0x8e1f1a, molten: 0xff7a1a, gold: 0xffb340, brick: 0xd8b0a0, tire: 0x1b1918, cyan: 0x39d8ff };
+const stoneC = (base = F.sand) => (x, y, z) => { const b = Math.sin(y * 2.6 + Math.sin(x * 0.7 + z * 0.5) * 0.8); return b > 0.6 ? F.rock : b < -0.7 ? F.sand2 : base; };
+function fSeam(k, a, b, th = 0.08, col = F.molten) { k.bar('glow', a, b, th, col, { fx: 3 + Math.random() * 0.9 }); }
+function fRivets(k, a, b, n, r = 0.07, col = F.iron2) {
+  for (let i = 0; i < n; i++) { const t = (i + 0.5) / n; k.add('solid', sph(r, 5, 3), col, [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t]); }
+}
+function fBrazier(k, p, s = 1, embers = true) {
+  k.push(p, [0, 0, 0], s);
+  for (let i = 0; i < 3; i++) { const a = i / 3 * TAU; k.bar('solid', polar(0.45, a, 0), polar(0.2, a, 0.9), 0.07, F.iron); }
+  k.add('solid', cyl(0.5, 0.25, 0.4, 8), F.iron2, [0, 1.05, 0]);
+  k.add('glow', cyl(0.42, 0.42, 0.05, 8), F.gold, [0, 1.24, 0], 0, 1, { fx: 3.2 });
+  k.flame([0, 1.22, 0], 1.1, 0.34);
+  if (embers) k.embers([0, 1.6, 0], 6, 0.5, 1);
+  k.pop();
+}
+function fRockFlare(k, p, R, h, r, n = 7) { // jittered boulders around a footprint so it rises out of the ground
+  for (let i = 0; i < n; i++) {
+    const a = i / n * TAU + r() * 0.5, d = R * (0.95 + r() * 0.12), s = 0.35 + r() * 0.5;
+    k.add('stone', jitter(new T.DodecahedronGeometry(1, 0), r, 0.2), stoneC(F.sand), [p[0] + Math.sin(a) * d, p[1] + s * 0.25, p[2] + Math.cos(a) * d], [r(), r() * 6, r()], [s * 1.2, s * h, s]);
+  }
+}
+function fCrest(k, x0, x1, y, z, n, len = 0.7) { // spiked iron crest along X
+  k.add('solid', box(x1 - x0, 0.16, 0.3), F.iron, [(x0 + x1) / 2, y, z]);
+  for (let i = 0; i < n; i++) { const x = x0 + (i + 0.5) * (x1 - x0) / n; k.spike('solid', [x, y + 0.05, z], [0, 1, 0], len, 0.1, F.iron2); }
+}
+function fChimney(k, p, h, r = 0.45) {
+  k.add('stone', cyl(r * 0.85, r * 1.3, h, 8), stoneC(F.rock), [p[0], p[1] + h / 2, p[2]]);
+  for (const t of [0.3, 0.75]) k.add('solid', cyl(r * 1.25 - t * r * 0.4, r * 1.25 - t * r * 0.4, 0.18, 8), F.iron, [p[0], p[1] + h * t, p[2]]);
+  k.add('solid', cyl(r * 1.0, r * 0.9, 0.3, 8), F.iron, [p[0], p[1] + h, p[2]]);
+  k.add('glow', cyl(r * 0.75, r * 0.75, 0.05, 8), F.molten, [p[0], p[1] + h + 0.16, p[2]], 0, 1, { fx: 3.5 });
+  k.flame([p[0], p[1] + h + 0.1, p[2]], 0.9, r * 0.6);
+  k.embers([p[0], p[1] + h + 0.4, p[2]], 8, r, 1.1); k.haze([p[0], p[1] + h + 0.6, p[2]], 3, 0.9); k.smoke([p[0], p[1] + h + 1.2, p[2]], 3, 0.8);
+}
+function fBanner(k, p, h, w, ry = 0, col = F.red) { // iron pole + red jacquard banner
+  k.line('solid', p, [p[0], p[1] + h, p[2]], 0.08, F.iron, 6);
+  k.push(p, [0, ry, 0]);
+  k.bar('solid', [0, h - 0.1, -0.1], [0, h - 0.1, w + 0.1], 0.1, F.iron);
+  k.add('jacq', cloth(w, h * 0.5, 0.05, 0.08), col, [0, h - 0.15 - h * 0.25, w / 2], [0, PI / 2, 0], 1, { smooth: true });
+  k.add('glow', box(0.04, 0.06, w), F.gold, [0, h - 0.2 - h * 0.5, w / 2], 0, 1, { fx: 3.3 });
+  k.spike('solid', [0, h, 0], [0, 1, 0], 0.6, 0.09, F.iron2);
+  k.pop();
+}
+function fWallBanner(k, p, ry, w, h) { k.push(p, [0, ry, 0]); k.add('jacq', cloth(w, h, 0.03, 0.04), F.red, [0, 0, 0], 0, 1, { smooth: true }); k.add('solid', box(w + 0.3, 0.14, 0.14), F.iron, [0, h / 2, 0.05]); k.add('glow', box(w * 0.7, 0.05, 0.03), F.gold, [0, -h / 2 + 0.2, 0.04], 0, 1, { fx: 3.6 }); k.pop(); }
+function fWheel(k, x, z, r, w) {
+  k.add('solid', cyl(r, r, w, 12), F.tire, [x, r, z], [PI / 2, 0, 0]);
+  for (let i = 0; i < 8; i++) k.add('solid', box(0.1, w + 0.04, 0.2), 0x2a2622, [x + Math.cos(i / 8 * TAU) * r, r + Math.sin(i / 8 * TAU) * r, z], [PI / 2, 0, i / 8 * TAU]); // tread blocks
+  k.add('solid', cyl(r * 0.5, r * 0.5, w + 0.06, 8), F.iron2, [x, r, z], [PI / 2, 0, 0]);
+  k.add('glow', cyl(r * 0.18, r * 0.18, w + 0.1, 6), F.molten, [x, r, z], [PI / 2, 0, 0], 1, { fx: 3.4 });
+}
+function fTracks(k, len, z, h, w) {
+  for (const s of [1, -1]) {
+    k.add('solid', prism([[-len / 2 + 0.2, 0.04], [len / 2 - 0.4, 0.04], [len / 2, h * 0.6], [len / 2 - 0.2, h], [-len / 2, h], [-len / 2 - 0.15, h * 0.4]], w, 0.04), F.tire, [0, 0, s * z]);
+    for (let x = -len / 2 + 0.05; x <= len / 2 - 0.2; x += 0.26) k.add('solid', box(0.09, 0.05, w + 0.05), F.iron2, [x, h + 0.02, s * z]);
+    for (let i = 0; i < 4; i++) k.add('solid', cyl(0.24, 0.24, 0.08, 8), F.steel, [-len / 2 + 0.5 + i * (len - 1) / 3, 0.3, s * (z + w / 2 + 0.02)], [PI / 2, 0, 0]);
+  }
+}
+function fRam(k, x, y, w, h, nSpikes = 3) { // forged iron ram prow pointing +X
+  k.add('solid', prism([[0, 0], [0.55, h * 0.35], [0, h]], w, 0.04), F.iron, [x, y, 0]);
+  k.add('solid', prism([[0, 0.1], [0.4, h * 0.38], [0, h - 0.1]], w * 0.6, 0.03), F.steel, [x + 0.12, y, 0]);
+  for (let i = 0; i < nSpikes; i++) { const z = (i - (nSpikes - 1) / 2) * w / nSpikes; k.spike('solid', [x + 0.45, y + h * 0.35, z], [1, 0.05, 0], 0.6, 0.08, F.steel); }
+}
+
+function F_tank() { // low, fast siege crawler with forged ram + heat vents
+  const k = new Kit('C');
+  fTracks(k, 4.5, 1.1, 0.62, 0.6);
+  k.add('solid', prism([[-2.3, 0.4], [1.6, 0.4], [2.3, 0.62], [1.4, 1.05], [-2.0, 1.12], [-2.4, 0.85]], 1.75, 0.06), F.rock2, [0, 0, 0]);
+  for (const s of [1, -1]) {
+    k.add('solid', prism([[-2.2, 0], [1.9, 0], [1.6, 0.22], [-2.0, 0.22]], 0.08, 0.02), F.red, [0, 0.72, s * 0.9]); // war-red side stripe
+    k.add('solid', prism([[-2.2, 0.62], [2.0, 0.62], [2.25, 0.72], [-2.3, 0.82]], 0.66, 0.03), F.iron2, [0, 0, s * 1.1]); // track guards
+    fRivets(k, [-1.8, 0.95, s * 0.9], [1.2, 0.95, s * 0.9], 6);
+    k.line('solid', [-1.9, 0.9, s * 0.55], [-2.4, 1.55, s * 0.55], 0.1, F.iron, 6); k.flame([-2.4, 1.55, s * 0.55], 0.55, 0.12);
+  }
+  k.add('solid', bbox(1.2, 0.1, 1.2, 0.03), F.iron, [-1.55, 1.15, 0]);
+  for (const x of [-1.95, -1.7, -1.45, -1.2]) fSeam(k, [x, 1.21, -0.45], [x, 1.21, 0.45], 0.07);
+  k.embers([-1.6, 1.3, 0], 5, 0.8, 0.8);
+  fRam(k, 2.0, 0.15, 2.4, 0.85, 4);
+  k.add('glow', box(0.06, 0.1, 0.35), F.gold, [2.05, 0.82, 0.55], [0, 0, 0.4]); k.add('glow', box(0.06, 0.1, 0.35), F.gold, [2.05, 0.82, -0.55], [0, 0, 0.4]);
+  const g = k.build();
+  const t = new Kit('C');
+  t.add('solid', prism([[-1.2, 0], [0.7, 0], [1.15, 0.22], [0.75, 0.5], [-1.0, 0.55], [-1.3, 0.25]], 1.45, 0.05), F.rock2, [0, 0, 0]);
+  t.add('solid', prism([[-0.9, 0.5], [0.6, 0.5], [0.4, 0.62], [-0.8, 0.64]], 1.0, 0.03), F.red, [0, 0, 0]);
+  for (const s of [1, -1]) { t.spike('solid', [-0.9, 0.4, s * 0.72], [-0.6, 0.5, s], 0.6, 0.07, F.iron2); fRivets(t, [-0.9, 0.3, s * 0.74], [0.5, 0.3, s * 0.74], 4, 0.06); }
+  t.add('solid', bbox(0.4, 0.36, 0.5, 0.05), F.iron, [1.05, 0.3, 0]);
+  t.add('solid', cyl(0.1, 0.12, 2.6, 8), F.iron2, [2.4, 0.3, 0], [0, 0, -PI / 2]);
+  t.add('solid', cyl(0.17, 0.17, 0.5, 8), F.iron, [1.6, 0.3, 0], [0, 0, -PI / 2]);
+  t.add('solid', bbox(0.36, 0.26, 0.3, 0.05), F.iron, [3.75, 0.3, 0]);
+  t.add('glow', box(0.05, 0.14, 0.2), F.molten, [3.94, 0.3, 0]);
+  const tur = t.build('turret'); tur.position.set(-0.2, 1.1, 0); g.add(tur);
+  return fin(g, 'tank', 2.0);
+}
+function F_raider() { // sleek dune interceptor: big rear wheels, long wedge, glowing engine core
+  const k = new Kit('C');
+  fWheel(k, -1.1, 0.95, 0.62, 0.5); fWheel(k, -1.1, -0.95, 0.62, 0.5); fWheel(k, 1.15, 0.8, 0.4, 0.32); fWheel(k, 1.15, -0.8, 0.4, 0.32);
+  k.add('solid', prism([[-1.7, 0.45], [0.6, 0.42], [1.9, 0.5], [1.85, 0.62], [0.2, 0.95], [-1.5, 1.05], [-1.8, 0.8]], 1.0, 0.05), F.rock2, [0, 0, 0]);
+  k.add('solid', prism([[0.3, 0.88], [1.8, 0.6], [1.7, 0.68], [0.4, 0.98]], 0.6, 0.03), F.red, [0, 0.02, 0]);
+  for (const s of [1, -1]) {
+    k.bar('solid', [1.15, 0.4, s * 0.45], [1.15, 0.4, s * 0.68], 0.1, F.iron);
+    k.add('solid', prism([[-1.6, 0], [-0.6, 0], [-0.8, 0.12], [-1.5, 0.15]], 0.5, 0.03), F.iron2, [0, 1.2, s * 0.95]); // rear fenders
+    k.spike('solid', [-1.6, 1.0, s * 0.5], [-1, 0.25, s * 0.3], 0.7, 0.07, F.iron2);
+    k.line('solid', [-1.4, 0.85, s * 0.32], [-2.1, 1.05, s * 0.32], 0.09, F.iron, 6); k.flame([-2.1, 1.05, s * 0.32], 0.45, 0.1, true);
+  }
+  k.add('solid', prism([[-0.5, 0], [0.4, 0], [0.1, 0.35], [-0.4, 0.38]], 0.55, 0.04), F.iron, [-0.2, 0.95, 0]); // cockpit
+  k.add('glow', box(0.3, 0.08, 0.5), F.gold, [0.05, 1.18, 0], [0, 0, 0.75], 1, { fx: 3.2 });
+  k.add('solid', cyl(0.32, 0.32, 0.6, 8), F.iron2, [-1.45, 0.95, 0], [PI / 2, 0, 0]);
+  k.add('glow', cyl(0.24, 0.24, 0.64, 8), F.molten, [-1.45, 0.95, 0], [PI / 2, 0, 0], 1, { fx: 3.6 });
+  k.embers([-1.6, 1.0, 0], 4, 0.4, 0.7);
+  fRam(k, 1.85, 0.28, 1.0, 0.45, 2);
+  k.add('solid', box(0.45, 0.14, 0.14), F.iron, [-0.55, 1.4, 0]); k.add('solid', cyl(0.045, 0.045, 1.0, 6), F.iron2, [0.15, 1.42, 0], [0, 0, -PI / 2]);
+  k.add('glow', box(0.06, 0.08, 0.2), F.gold, [1.86, 0.6, 0.3]); k.add('glow', box(0.06, 0.08, 0.2), F.gold, [1.86, 0.6, -0.3]);
+  return fin(k.build(), 'raider', 1.7);
+}
+function F_harvester() { // armored rock-cutter hauler with glowing crusher
+  const k = new Kit('C'), r = rng(121);
+  k.add('solid', bbox(4.0, 0.4, 1.6, 0.06), F.iron, [0, 0.72, 0]);
+  for (const x of [1.25, 0.05, -1.2]) for (const s of [1, -1]) fWheel(k, x, s * 1.05, 0.5, 0.4);
+  k.add('solid', prism([[0.4, 0.9], [1.7, 0.9], [1.75, 1.35], [1.35, 1.95], [0.5, 2.0]], 1.7, 0.06), F.rock2, [0, 0, 0]);
+  k.add('glow', box(0.05, 0.16, 1.3), F.gold, [1.56, 1.65, 0], [0, 0, 0.55], 1, { fx: 3.3 });
+  for (const s of [1, -1]) { k.add('solid', bbox(1.1, 0.25, 0.06, 0.02), F.red, [1.05, 1.25, s * 0.87]); fRivets(k, [0.5, 1.6, s * 0.87], [1.4, 1.6, s * 0.87], 4, 0.05); }
+  // armoured ore hopper with crystals
+  k.add('solid', prism([[-1.9, 0.9], [0.3, 0.9], [0.4, 2.0], [-2.0, 2.1]], 1.9, 0.06), F.rock2, [0, 0, 0]);
+  k.add('solid', box(2.1, 0.05, 1.6), 0x1a1210, [-0.8, 2.02, 0]);
+  for (let i = 0; i < 7; i++) k.add('glow', ico(0.3, 0), i % 3 ? F.cyan : 0xbff6ff, [-0.8 + (r() - 0.5) * 1.6, 2.15 + r() * 0.15, (r() - 0.5) * 1.2], [r(), r(), r()], [0.7, 1.3, 0.7]);
+  for (const s of [1, -1]) { k.add('solid', box(2.4, 0.16, 0.16), F.iron2, [-0.8, 2.12, s * 0.98]); k.add('solid', bbox(1.8, 0.3, 0.06, 0.02), F.red, [-0.8, 1.45, s * 0.98]); }
+  // crusher drum with glowing teeth
+  k.add('solid', prism([[1.7, 0.2], [2.3, 0.15], [2.5, 0.9], [1.8, 1.2]], 2.2, 0.05), F.iron, [0, 0, 0]);
+  k.add('glow', cyl(0.42, 0.42, 1.9, 10), F.molten, [2.45, 0.5, 0], [PI / 2, 0, 0], 1, { fx: 3.5 });
+  k.add('solid', cyl(0.46, 0.46, 2.0, 6, true), F.iron2, [2.45, 0.5, 0], [PI / 2, 0, 0]);
+  for (let i = 0; i < 6; i++) for (const z of [-0.6, 0, 0.6]) { const a = i / 6 * TAU + z; k.spike('solid', [2.45 + Math.cos(a) * 0.45, 0.5 + Math.sin(a) * 0.45, z], [Math.cos(a), Math.sin(a), 0], 0.3, 0.08, F.steel); }
+  k.embers([2.6, 0.5, 0], 5, 1.4, 0.6);
+  k.line('solid', [0.5, 1.9, 0.6], [0.4, 2.8, 0.6], 0.1, F.iron, 6); k.flame([0.4, 2.8, 0.6], 0.5, 0.12); k.smoke([0.4, 3.0, 0.6], 3, 0.6);
+  return fin(k.build(), 'harvester', 2.4);
+}
+function F_cc() { // fortress-forge carved into a rock outcrop: crucible core + iron spire
+  const k = new Kit('C'), r = rng(131);
+  fRockFlare(k, [0, 0, 0], 7.8, 1.2, r, 11);
+  k.add('stone', cyl(6.6, 8.0, 2.6, 9), stoneC(), [0, 1.3, 0], [0, 0.2, 0]);           // outcrop base
+  k.add('stone', cyl(5.0, 6.4, 3.0, 7), stoneC(F.sand2), [0, 4.1, 0], [0, 0.5, 0]);   // carved upper tier
+  k.add('solid', cyl(6.65, 6.65, 0.35, 9), F.iron, [0, 2.65, 0], [0, 0.2, 0]);         // iron band
+  k.add('solid', cyl(5.05, 5.05, 0.3, 7), F.iron, [0, 5.6, 0], [0, 0.5, 0]);
+  for (let i = 0; i < 9; i++) { const a = 0.2 + (i + 0.5) / 9 * TAU; k.add('solid', sph(0.16, 5, 3), F.iron2, polar(6.66, a, 2.65)); }
+  // wedge buttresses
+  for (let i = 0; i < 7; i++) { const a = 0.5 + (i + 0.5) / 7 * TAU, p = polar(6.3, a, 0);
+    k.add('stone', prism([[-0.2, 0], [1.9, 0], [0.1, 5.3], [-0.2, 5.4]], 1.0, 0.06), stoneC(F.rock), p, [0, a - PI / 2, 0]);
+    k.add('solid', box(0.3, 0.25, 1.1), F.iron, polar(6.45, a, 3.6), [0, a - PI / 2, 0]); }
+  // molten pour channels down the rock face
+  for (const a of [0.9, 2.6, 4.0, 5.4]) { fSeam(k, polar(4.95, a, 5.5), polar(6.5, a, 2.6), 0.14); fSeam(k, polar(6.75, a, 2.5), polar(7.9, a, 0.08), 0.14); }
+  // crucible core
+  k.add('solid', cyl(3.2, 2.2, 1.6, 10), F.iron, [0, 6.4, 0]);
+  k.add('solid', torus(3.15, 0.18, 4, 20), F.iron2, [0, 7.2, 0], [PI / 2, 0, 0]);
+  k.add('glow', cyl(2.95, 2.95, 0.08, 16), F.molten, [0, 7.05, 0], 0, 1, { fx: 3.1 });
+  k.add('glow', cyl(1.6, 1.6, 0.1, 12), F.gold, [0, 7.1, 0], 0, 1, { fx: 3.7 });
+  for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; k.flame(polar(1.9, a, 7.05), 1.2 + (i % 2) * 0.6, 0.35); }
+  k.embers([0, 7.4, 0], 22, 4.5, 1.4); k.haze([0, 7.8, 0], 4, 2.0);
+  for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + 0.4; k.add('solid', bbox(0.5, 1.8, 0.5, 0.06), F.iron2, polar(3.25, a, 6.4), [0, a, 0]); k.add('glow', box(0.08, 1.2, 0.2), F.molten, polar(3.52, a, 6.4), [0, a, 0], 1, { fx: 3.3 }); }
+  // iron spire (rear) with spiked rings + chains to the rock
+  k.push([-2.6, 5.6, -1.6]);
+  k.add('solid', cyl(0.35, 1.1, 8.2, 6), F.iron, [0, 4.1, 0]);
+  for (const [y, rr] of [[2.4, 1.05], [5.2, 0.75]]) { k.add('solid', cyl(rr, rr, 0.3, 6), F.iron2, [0, y, 0]); for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; k.spike('solid', polar(rr, a, y), [Math.sin(a), 0.3, Math.cos(a)], 0.7, 0.08, F.steel); } }
+  for (let i = 0; i < 3; i++) { const a = i / 3 * TAU; fSeam(k, polar(1.0, a, 0.4), polar(0.4, a, 7.8), 0.07, F.gold); }
+  k.spike('solid', [0, 8.1, 0], [0, 1, 0], 1.4, 0.25, F.iron2);
+  k.flame([0, 9.3, 0], 0.8, 0.14);
+  k.pop();
+  for (const a of [0.6, 2.4]) k.line('solid', [-2.6, 13.0, -1.6], polar(6.0, a, 2.8), 0.05, F.iron2, 4);
+  // dressed-masonry gatehouse on +X with iron gate + glowing seams
+  k.add('brick', bbox(2.4, 3.6, 4.4, 0.08), F.brick, [7.2, 1.8, 0]);
+  k.add('solid', box(0.2, 2.6, 2.4), F.iron, [8.45, 1.4, 0]);
+  for (const z of [-0.8, -0.27, 0.27, 0.8]) k.add('solid', box(0.08, 2.5, 0.12), F.iron2, [8.57, 1.4, z]);
+  fSeam(k, [8.6, 0.1, 0], [8.6, 2.7, 0], 0.07); fSeam(k, [8.6, 2.75, -1.2], [8.6, 2.75, 1.2], 0.09);
+  k.add('solid', prism([[0, 0], [0.5, 0], [0.5, 0.5]], 4.8, 0.03), F.iron, [7.9, 3.6, 0]);
+  fCrest(k, 6.2, 8.2, 3.75, 2.2, 4, 0.6); fCrest(k, 6.2, 8.2, 3.75, -2.2, 4, 0.6);
+  fBrazier(k, [8.8, 0, 2.7], 1.2); fBrazier(k, [8.8, 0, -2.7], 1.2);
+  for (const a of [PI / 2 + 0.75, PI / 2 - 0.85, PI + 0.6, -0.4]) fWallBanner(k, polar(6.35, a, 3.6).map((v, i) => v + (i === 1 ? 0 : 0)), a, 1.3, 2.4);
+  fBrazier(k, polar(5.6, PI + 1.2, 5.75), 1.0, false); fBrazier(k, polar(5.6, 1.4, 5.75), 1.0, false);
+  return fin(k.build(), 'cc', 13.5);
+}
+function F_barracks() { // rock-cut hall with iron gates
+  const k = new Kit('C'), r = rng(141);
+  fRockFlare(k, [0, 0, 0], 4.6, 0.8, r, 8);
+  k.add('stone', prism([[-3.4, 0], [3.4, 0], [2.9, 3.9], [-2.9, 3.9]], 7.6, 0.08), stoneC(), [-0.4, 0, 0], [0, PI / 2, 0]);
+  k.add('stone', prism([[-3.6, 0], [3.6, 0], [1.0, 1.7], [-1.0, 1.7]], 7.0, 0.08), stoneC(F.rock), [-0.4, 3.9, 0], [0, PI / 2, 0]);
+  k.add('solid', box(7.2, 0.25, 6.0), F.iron, [-0.4, 3.95, 0]);
+  for (const x of [-3.0, -0.4, 2.2]) { k.add('solid', box(0.35, 0.2, 6.4), F.iron2, [x, 2.2, 0]); }
+  // dressed-brick facade + iron double gate on +X
+  k.add('brick', bbox(0.9, 4.6, 5.4, 0.08), F.brick, [3.4, 2.3, 0]);
+  k.add('solid', box(0.2, 2.8, 2.6), F.iron, [3.88, 1.4, 0]);
+  for (const z of [-0.9, -0.3, 0.3, 0.9]) k.add('solid', box(0.1, 2.7, 0.12), F.iron2, [3.99, 1.4, z]);
+  fRivets(k, [4.0, 2.4, -1.2], [4.0, 2.4, 1.2], 7, 0.06);
+  fSeam(k, [4.02, 0.05, 0], [4.02, 2.75, 0], 0.07); fSeam(k, [4.02, 2.85, -1.3], [4.02, 2.85, 1.3], 0.1, F.gold);
+  k.add('solid', prism([[0, 0], [0.7, 0], [0.7, 0.4]], 5.6, 0.03), F.iron, [3.2, 4.6, 0]);
+  fCrest(k, 2.9, 4.0, 4.98, 0, 3, 0.6);
+  fBrazier(k, [4.5, 0, 2.2], 1.1); fBrazier(k, [4.5, 0, -2.2], 1.1);
+  for (const s of [1, -1]) { fWallBanner(k, [0.4, 2.2, s * 3.1], s > 0 ? 0 : PI, 1.2, 2.2); fWallBanner(k, [-2.4, 2.2, s * 3.1], s > 0 ? 0 : PI, 1.2, 2.2); fSeam(k, [-3.6, 0.3, s * 3.15], [2.8, 0.3, s * 3.15], 0.1); }
+  fChimney(k, [-2.8, 4.3, 1.4], 2.6, 0.45);
+  fBanner(k, [-3.9, 0, -3.0], 6.5, 1.2, PI);
+  return fin(k.build(), 'barracks', 6.0);
+}
+function F_factory() { // forge-hangar: molten pour channels, crucible, crane with ladle
+  const k = new Kit('C'), r = rng(151);
+  fRockFlare(k, [-2.3, 0, 0], 4.6, 0.8, r, 7);
+  k.add('stone', prism([[-3.7, 0], [3.7, 0], [3.2, 4.6], [-3.2, 4.6]], 5.8, 0.08), stoneC(), [-2.3, 0, 0], [0, PI / 2, 0]);
+  k.add('brick', bbox(0.5, 4.2, 6.6, 0.06), F.brick, [0.5, 2.1, 0]);
+  for (const s of [1, -1]) { k.add('stone', prism([[0, 0], [4.4, 0], [4.4, 0.5], [0, 4.8]], 0.9, 0.06), stoneC(F.rock), [0.5, 0, s * 3.3]); }
+  // iron hangar roof frame over the bay
+  for (const x of [1.5, 3.0, 4.5]) k.bar('solid', [x, 4.6, -3.4], [x, 5.2, 0], 0.22, F.iron), k.bar('solid', [x, 5.2, 0], [x, 4.6, 3.4], 0.22, F.iron);
+  k.add('solid', box(3.6, 0.08, 7.0), F.iron2, [3.0, 4.9, 0], [0, 0, 0.0]);
+  // molten pour channel from crucible across the bay floor
+  k.add('solid', cyl(1.0, 0.7, 1.1, 10), F.iron, [1.6, 0.55, -1.6]);
+  k.add('glow', cyl(0.85, 0.85, 0.06, 10), F.molten, [1.6, 1.1, -1.6], 0, 1, { fx: 3.2 });
+  k.add('stone', box(4.4, 0.25, 0.7), stoneC(F.rock2), [3.6, 0.12, -0.2]);
+  k.add('glow', box(4.3, 0.06, 0.4), F.molten, [3.6, 0.27, -0.2], 0, 1, { fx: 3.5 });
+  fSeam(k, [1.6, 0.3, -1.0], [1.6, 0.3, -0.2], 0.25);
+  k.embers([1.6, 1.3, -1.6], 10, 1.0, 1); k.embers([3.8, 0.4, -0.2], 8, 2.5, 0.6);
+  // gantry crane with molten ladle
+  for (const s of [1, -1]) k.add('solid', bbox(0.45, 7.0, 0.45, 0.05), F.iron, [5.4, 3.5, s * 3.6]);
+  k.add('solid', bbox(0.7, 0.6, 8.0, 0.06), F.iron2, [5.4, 7.1, 0]);
+  fRivets(k, [5.78, 7.1, -3.6], [5.78, 7.1, 3.6], 10, 0.07);
+  k.line('solid', [5.4, 6.8, 1.0], [5.4, 3.6, 1.0], 0.04, F.steel, 4);
+  k.add('solid', cyl(0.7, 0.5, 0.9, 8), F.iron, [5.4, 3.1, 1.0]);
+  k.add('glow', cyl(0.6, 0.6, 0.05, 8), F.molten, [5.4, 3.56, 1.0], 0, 1, { fx: 3.4 });
+  k.flame([5.4, 3.55, 1.0], 0.5, 0.3);
+  // chimneys + crest + banners
+  fChimney(k, [-4.0, 4.6, -1.8], 3.4, 0.55); fChimney(k, [-4.0, 4.6, 1.8], 2.6, 0.45);
+  fCrest(k, -5.0, 0.4, 4.75, 2.85, 7, 0.55); fCrest(k, -5.0, 0.4, 4.75, -2.85, 7, 0.55);
+  for (const s of [1, -1]) { fWallBanner(k, [-2.3, 2.5, s * 3.05], s > 0 ? 0 : PI, 1.4, 2.4); fSeam(k, [-5.2, 0.3, s * 3.25], [0.4, 0.3, s * 3.25], 0.1); }
+  fBrazier(k, [6.0, 0, 3.2], 1.0); fBrazier(k, [6.0, 0, -3.2], 1.0);
+  return fin(k.build(), 'factory', 7.4);
+}
+function fEmplacement(k, R, h, r) { // octagonal carved stone ring, flared, iron-banded
+  fRockFlare(k, [0, 0, 0], R + 0.1, 0.5, r, 6);
+  k.add('stone', cyl(R * 0.82, R, h, 8), stoneC(), [0, h / 2, 0], [0, PI / 8, 0]);
+  k.add('solid', cyl(R * 0.84, R * 0.84, 0.18, 8), F.iron, [0, h - 0.05, 0], [0, PI / 8, 0]);
+  for (let i = 0; i < 8; i++) { const a = PI / 8 + i / 8 * TAU; k.add('solid', sph(0.09, 5, 3), F.iron2, polar(R * 0.85, a, h - 0.05)); }
+  for (const a of [PI / 2, -PI / 2, PI]) fSeam(k, polar(R * 0.98, a, 0.12), polar(R * 0.85, a, h - 0.2), 0.09);
+}
+function F_turret_mg() {
+  const k = new Kit('C'), r = rng(161); fEmplacement(k, 1.6, 0.9, r);
+  const g = k.build();
+  const t = new Kit('C');
+  t.add('solid', cyl(0.75, 0.85, 0.25, 8), F.iron2, [0, 0.12, 0]);
+  t.add('solid', prism([[-0.6, 0], [0.5, 0], [0.75, 0.3], [0.5, 0.7], [-0.6, 0.7]], 1.1, 0.04), F.rock2, [0, 0.2, 0]);
+  t.add('solid', prism([[0, 0], [0.25, 0.4], [0, 0.95]], 1.4, 0.03), F.iron, [0.55, 0.2, 0]);
+  for (const s of [1, -1]) { t.add('solid', cyl(0.06, 0.06, 1.3, 6), F.iron2, [1.25, 0.6, s * 0.18], [0, 0, -PI / 2]); t.add('glow', box(0.05, 0.08, 0.08), F.molten, [1.92, 0.6, s * 0.18]); t.spike('solid', [-0.5, 0.75, s * 0.4], [-0.5, 1, s * 0.4], 0.6, 0.07, F.iron2); }
+  t.add('glow', box(0.5, 0.05, 0.6), F.gold, [-0.1, 0.93, 0], 0, 1, { fx: 3.4 });
+  const tur = t.build('turret'); tur.position.y = 0.95; g.add(tur);
+  return fin(g, 'turret_mg', 2.0);
+}
+function F_turret_cannon() { // primitive fallback (no glTF yet)
+  const k = new Kit('C'), r = rng(171); fEmplacement(k, 1.6, 2.0, r);
+  const g = k.build();
+  const t = new Kit('C');
+  t.add('solid', prism([[-0.95, 0], [0.7, 0], [1.1, 0.35], [0.75, 0.85], [-0.85, 0.9], [-1.1, 0.45]], 1.5, 0.05), F.rock2, [0, 0, 0]);
+  t.add('solid', cyl(0.15, 0.17, 2.6, 8), F.iron2, [2.3, 0.45, 0], [0, 0, -PI / 2]);
+  t.add('solid', cyl(0.24, 0.24, 0.5, 8), F.iron, [1.3, 0.45, 0], [0, 0, -PI / 2]);
+  t.add('glow', box(0.05, 0.2, 0.2), F.molten, [3.62, 0.45, 0]);
+  const tur = t.build('turret'); tur.position.y = 2.0; g.add(tur);
+  return fin(g, 'turret_cannon', 3.4);
+}
+function F_artillery() {
+  const k = new Kit('C'), r = rng(181);
+  k.add('stone', bbox(4.2, 0.7, 4.2, 0.15), stoneC(), [0, 0.35, 0]); fRockFlare(k, [0, 0, 0], 2.3, 0.4, r, 6);
+  const g = k.build();
+  const t = new Kit('C');
+  t.add('solid', cyl(1.2, 1.3, 0.3, 8), F.iron2, [0, 0.15, 0]);
+  t.push([0.3, 1.0, 0], [0, 0, 0.6]);
+  t.add('solid', bbox(1.0, 0.6, 0.65, 0.05), F.iron, [-0.1, 0, 0]);
+  t.add('solid', cyl(0.22, 0.28, 3.8, 8), F.iron2, [1.9, 0, 0], [0, 0, -PI / 2]);
+  t.pop();
+  const tur = t.build('turret'); tur.position.y = 0.7; g.add(tur);
+  return fin(g, 'artillery', 3.0);
+}
+function F_turret_cannon_gltf() { // carved stone emplacement + forged-iron mount + PBR cannon
+  const k = new Kit('C'), r = rng(175); fEmplacement(k, 1.65, 1.0, r);
+  fBrazier(k, polar(1.75, PI * 0.8, 0), 0.7, false);
+  const g = k.build();
+  const t = new Kit('C');
+  t.add('solid', cyl(1.05, 1.1, 0.2, 8), F.iron2, [0, 0.1, 0]);
+  for (const sd of [1, -1]) { t.add('solid', prism([[-0.8, 0], [0.9, 0], [0.6, 0.85], [-0.6, 0.9]], 0.14, 0.03), F.rock2, [0.1, 0.15, sd * 0.85]); t.spike('solid', [0.85, 0.5, sd * 0.85], [1, 0.4, sd * 0.3], 0.6, 0.07, F.iron2); fRivets(t, [-0.5, 0.6, sd * 0.93], [0.5, 0.6, sd * 0.93], 4, 0.05); }
+  t.add('glow', box(1.4, 0.05, 0.05), F.gold, [0.1, 0.25, 0.93], 0, 1, { fx: 3.3 }); t.add('glow', box(1.4, 0.05, 0.05), F.gold, [0.1, 0.25, -0.93], 0, 1, { fx: 3.6 });
+  const tur = t.build('turret');
+  addCannon(tur, [-0.15, 0.12, 0], 1.45);
+  tur.position.y = 1.0; g.add(tur);
+  return fin(g, 'turret_cannon', 2.6);
+}
+function F_artillery_gltf() {
+  const k = new Kit('C'), r = rng(185);
+  k.add('stone', bbox(4.2, 0.8, 4.2, 0.18), stoneC(), [0, 0.4, 0]); fRockFlare(k, [0, 0, 0], 2.4, 0.45, r, 7);
+  k.add('solid', box(4.3, 0.15, 4.3), F.iron, [0, 0.82, 0]);
+  for (const [x, z] of [[1.9, 1.9], [-1.9, 1.9], [1.9, -1.9], [-1.9, -1.9]]) k.spike('solid', [x, 0.85, z], [x, 2.5, z], 0.9, 0.12, F.iron2);
+  fSeam(k, [-2.12, 0.5, -1.6], [-2.12, 0.5, 1.6], 0.1); fSeam(k, [2.12, 0.5, -1.6], [2.12, 0.5, 1.6], 0.1);
+  fBrazier(k, [-1.6, 0.85, 1.6], 0.6, false);
+  const g = k.build();
+  const t = new Kit('C');
+  t.add('solid', cyl(1.3, 1.35, 0.25, 8), F.iron2, [0, 0.12, 0]);
+  t.add('stone', bbox(2.0, 0.5, 1.6, 0.06), stoneC(F.rock), [-0.3, 0.45, 0]);
+  for (const sd of [1, -1]) t.add('solid', prism([[-0.9, 0], [1.0, 0], [0.7, 1.1], [-0.7, 1.2]], 0.14, 0.03), F.rock2, [0.1, 0.2, sd * 0.95]);
+  t.add('glow', box(0.05, 0.6, 0.5), F.molten, [-1.32, 0.5, 0], 0, 1, { fx: 3.5 });
+  const tur = t.build('turret');
+  addCannon(tur, [-0.2, 0.7, 0], 1.9, 0.32);
+  tur.position.y = 0.9; g.add(tur);
+  return fin(g, 'artillery', 3.3);
+}
+function F_wall(variant) { // sandstone slab bound with iron, wedge buttresses, spiked crest
+  const k = new Kit('C'), r = rng(191 + variant * 7);
+  if (variant === 1) k.add('brick', prism([[-0.75, 0], [0.75, 0], [0.55, 1.75], [-0.55, 1.75]], 3.96, 0.05), F.brick, [0, 0, 0], [0, PI / 2, 0]);
+  else k.add('stone', prism([[-0.75, 0], [0.75, 0], [0.55, 1.75], [-0.55, 1.75]], 3.96, 0.05), stoneC(variant ? F.sand2 : F.sand), [0, 0, 0], [0, PI / 2, 0]);
+  for (const s of [1, -1]) {
+    for (const x of [-1.75, 1.75]) k.add('stone', prism([[0, 0], [0.6, 0], [0.05, 1.5], [0, 1.6]], 0.5, 0.04), stoneC(F.rock), [x, 0, s * 0.62], [0, -s * PI / 2, 0]);
+    k.add('solid', box(3.9, 0.16, 0.06), F.iron, [0, 0.35, s * 0.73], [s * 0.11, 0, 0]);
+    k.add('solid', box(3.9, 0.2, 0.06), F.iron, [0, 1.45, s * 0.6], [s * 0.11, 0, 0]);
+    fRivets(k, [-1.6, 1.45, s * 0.64], [1.6, 1.45, s * 0.64], 5, 0.06);
+    if (variant === 2) fSeam(k, [-1.2, 0.2, s * 0.74], [0.4 + r(), 1.3, s * 0.62], 0.08);
+  }
+  for (const x of [-1.0, 1.0]) k.add('solid', box(0.2, 1.8, 1.56), F.iron2, [x, 0.9, 0]);
+  k.add('solid', bbox(4.0, 0.22, 1.3, 0.05), F.iron, [0, 1.85, 0]);
+  fCrest(k, -1.9, 1.9, 2.0, 0, 6, 0.55);
+  return fin(k.build(), 'wall', 2.4);
+}
+function F_gate() { // massive iron portcullis between flared stone pylons, glowing seams
+  const k = new Kit('C'), r = rng(201);
+  for (const s of [1, -1]) {
+    fRockFlare(k, [0, 0, s * 2.5], 1.2, 0.6, r, 5);
+    k.add('stone', cyl(0.75, 1.25, 5.4, 6), stoneC(), [0, 2.7, s * 2.5], [0, 0.3, 0]);
+    k.add('solid', cyl(0.95, 0.95, 0.3, 6), F.iron, [0, 3.6, s * 2.5], [0, 0.3, 0]);
+    k.add('solid', cone(0.9, 1.2, 6), F.iron, [0, 6.0, s * 2.5], [0, 0.3, 0]);
+    fBrazier(k, [0, 6.4, s * 2.5], 0.8);
+    fSeam(k, [0.95, 0.3, s * 2.5], [0.7, 5.2, s * 2.5], 0.1);
+    k.add('jacq', cloth(1.0, 2.4, 0.03, 0.08), F.red, [0.95, 3.2, s * 2.5], [0, PI / 2, 0], 1, { smooth: true });
+  }
+  k.add('solid', bbox(0.7, 0.7, 6.2, 0.08), F.iron, [0, 5.2, 0]);
+  fCrest(k, -0.01, 0.01, 5.6, 0, 0, 0.5);
+  for (let i = 0; i < 6; i++) k.spike('solid', [0, 5.5, -2.0 + i * 0.8], [0, 1, 0], 0.8, 0.1, F.iron2);
+  // portcullis grid
+  for (let z = -1.5; z <= 1.51; z += 0.375) { k.add('solid', box(0.18, 4.4, 0.14), F.iron2, [0.1, 2.5, z]); k.spike('solid', [0.1, 0.32, z], [0, -1, 0], 0.35, 0.08, F.steel); }
+  for (const y of [1.0, 2.1, 3.2, 4.3]) k.add('solid', box(0.22, 0.18, 3.4), F.iron, [0.1, y, 0]);
+  for (const y of [1.55, 2.65, 3.75]) fSeam(k, [0.08, y, -1.5], [0.08, y, 1.5], 0.06);
+  for (const z of [-1.2, 1.2]) for (let y = 4.6; y < 5.0; y += 0.16) k.add('solid', torus(0.07, 0.022, 3, 6), F.steel, [0.1, y, z], [0, (y * 10 | 0) % 2 ? PI / 2 : 0, 0]);
+  k.add('glow', box(0.06, 0.5, 0.5), F.molten, [0.25, 4.85, 0], [PI / 4, 0, 0], 1, { fx: 3.4 });
+  return fin(k.build(), 'gate', 6.8);
 }
 
 // ======================================================================= neutral
@@ -1068,21 +1481,93 @@ function N_rock(variant) {
   return fin(k.build(), 'rock', 1.5);
 }
 
+function decorScrap(k, lx, lz, i, r, ry) {
+      const t = i % 6;
+  if (i === 0) cBanner(k, [lx, 0, lz], 6, 1.4, C.red, ry);
+  else if (t === 0) { for (let h = 0; h < 4; h++) cTire(k, [lx + (r() - 0.5) * 0.4, 0.2 + h * 0.32, lz + (r() - 0.5) * 0.4], 0.62); cTire(k, [lx + 1.1, 0.2, lz + 0.4], 0.62); cTire(k, [lx + 0.6, 0.55, lz - 0.9], 0.62, true, r()); }
+  else if (t === 1) { cDrum(k, [lx, 0, lz], C.red, true); cDrum(k, [lx + 0.8, 0, lz + 0.2], C.rust); cDrum(k, [lx + 0.3, 0, lz - 0.75], C.rust3, false, 1.5); }
+  else if (t === 2) cHulk(k, [lx, 0, lz], ry, pick(r, [C.rust, C.red, C.rust2]), r() < 0.5);
+  else if (t === 3) { for (let j = 0; j < 7; j++) k.add(r() < 0.5 ? 'scrap' : 'solid', box(0.6 + r() * 1.4, 0.2 + r() * 0.5, 0.5 + r() * 1.0), pick(r, [C.rust, C.rust2, C.steel2, C.red, C.rust3]), [lx + (r() - 0.5) * 2, 0.15 + r() * 0.6, lz + (r() - 0.5) * 2], [(r() - 0.5) * 0.8, r() * 3, (r() - 0.5) * 0.8]); cSpike(k, [lx, 0.5, lz], [0.2, 1, 0.1], 1.4, 0.1, C.steel); }
+  else if (t === 4) cTotem(k, [lx, 0, lz], 2.6 + r());
+  else if (i % 12 === 5) { cScaffold(k, [lx, 0, lz], 2.0, 3.5); cDrum(k, [lx + 0.2, 3.55, lz], C.soot, true); }
+  else { cTarp(k, [lx, 0, lz], ry, 3.2, 2.6, 2.0); cDrum(k, [lx + 0.4, 0, lz + 0.3], C.rust); for (let h = 0; h < 2; h++) cTire(k, [lx - 0.7, 0.2 + h * 0.32, lz - 0.4], 0.6); }
+}
+function decorCyber(k, lx, lz, i, r, ry0) {
+  const ry = (ry0 - PI) * 0.15; // billboards roughly face the camera (+z)
+      const t = i % 5;
+  if (t === 0) { // light pole
+    k.add('lit', bbox(0.5, 0.2, 0.5, 0.05), V.trim, [lx, 0.1, lz]);
+    k.line('lit', [lx, 0, lz], [lx, 4.2, lz], 0.08, V.body2, 6);
+    k.bar('lit', [lx, 4.2, lz], [lx + 0.9, 4.4, lz], 0.1, V.body2);
+    k.add('glow', box(0.6, 0.08, 0.25), i % 2 ? V.cyan : V.mag, [lx + 0.8, 4.3, lz]);
+    k.add('holo', plane(3.0, 3.0), 0xffffff, [lx + 0.8, 0.06, lz], [-PI / 2, 0, 0], 1, { uv: cellUV(i % 2 ? 3 : 4), fx: 3.5, smooth: true });
+  } else if (t === 1) { // holo billboard
+    for (const d of [-1.5, 1.5]) k.line('lit', [lx + Math.cos(ry) * d, 0, lz - Math.sin(ry) * d], [lx + Math.cos(ry) * d, 4.5, lz - Math.sin(ry) * d], 0.1, V.body2, 6);
+    k.sign([lx, 3.6, lz], ry, 3.6, 2.1, pick(r, [0, 1, 2]), 2, 0xffffff, -0.55);
+    k.add('glow', box(0.2, 0.2, 0.2), V.red, [lx, 4.7, lz], 0, 1, { fx: 1.3 });
+  } else if (t === 2) { // cable bundle
+    for (let j = 0; j < 4; j++) { const off = (j - 1.5) * 0.18; k.line('lit', [lx - 3 * Math.cos(ry) + off, 0.1, lz + 3 * Math.sin(ry)], [lx + 3 * Math.cos(ry) + off, 0.1 + j * 0.03, lz - 3 * Math.sin(ry) + off], 0.08, j % 2 ? V.body2 : V.trim, 5); }
+    k.add('glow', box(0.1, 0.1, 0.1), V.cyan, [lx, 0.22, lz]);
+    k.add('lit', bbox(0.8, 0.9, 0.8, 0.06), V.trim, [lx + 3 * Math.cos(ry), 0.45, lz - 3 * Math.sin(ry)]);
+    k.add('glow', box(0.82, 0.08, 0.82), V.cyan, [lx + 3 * Math.cos(ry), 0.7, lz - 3 * Math.sin(ry)], 0, 1, { fx: 3.2 });
+  } else if (t === 3) { // vending kiosk
+    k.push([lx, 0, lz], [0, -PI / 2 + (ry - PI) * 0.15, 0]);
+    k.add('lit', bbox(1.2, 2.2, 1.0, 0.08), V.body, [0, 1.1, 0]);
+    k.add('glow', box(0.06, 1.4, 0.8), 0x0d2236, [0.61, 1.2, 0]);
+    k.sign([0.64, 1.2, 0], PI / 2, 0.8, 1.4, i % 2, 2);
+    k.bar('glow', [0.62, 2.2, -0.5], [0.62, 2.2, 0.5], 0.06, V.mag);
+    k.pop();
+  } else { // antenna mast / crate stack
+    k.add('lit', bbox(1.4, 1.0, 1.4, 0.08), V.body2, [lx, 0.5, lz], [0, ry, 0]);
+    k.add('lit', bbox(1.0, 0.8, 1.0, 0.08), V.blue, [lx, 1.4, lz], [0, ry + 0.4, 0]);
+    vAntenna(k, [lx, 1.8, lz], 3.0);
+    k.bar('glow', [lx - 0.5, 1.02, lz], [lx + 0.5, 1.02, lz], 0.05, V.cyan);
+  }
+}
+function decorForge(k, lx, lz, i, r, ry) {
+  const t = i % 6;
+  if (t === 0) fBanner(k, [lx, 0, lz], 6.5, 1.3, ry);
+  else if (t === 1) fBrazier(k, [lx, 0, lz], 1.3);
+  else if (t === 2) { // red-rock spire
+    for (let j = 0; j < 3; j++) k.add('stone', jitter(new T.DodecahedronGeometry(1, 0), r, 0.2), stoneC(F.rock), [lx + (r() - 0.5) * 1.2, 0.8 + j * 1.3, lz + (r() - 0.5) * 1.2], [r(), r() * 6, r()], [1.4 - j * 0.3, 1.2, 1.3 - j * 0.3]);
+  } else if (t === 3) { // crucible pool in a stone ring
+    k.add('stone', cyl(1.5, 1.8, 0.5, 8), stoneC(F.rock2), [lx, 0.25, lz]);
+    k.add('glow', cyl(1.15, 1.15, 0.05, 10), F.molten, [lx, 0.52, lz], 0, 1, { fx: 3.2 });
+    k.embers([lx, 0.6, lz], 6, 1.6, 0.8); k.haze([lx, 0.8, lz], 2, 1.2);
+  } else if (t === 4) { // iron obelisk with glowing seams
+    k.add('stone', cyl(0.9, 1.2, 0.6, 4), stoneC(), [lx, 0.3, lz], [0, PI / 4, 0]);
+    k.add('solid', cyl(0.25, 0.6, 4.5, 4), F.iron, [lx, 2.85, lz], [0, PI / 4, 0]);
+    fSeam(k, [lx + 0.45, 0.7, lz], [lx + 0.18, 4.8, lz], 0.07); fSeam(k, [lx, 0.7, lz + 0.45], [lx, 4.8, lz + 0.18], 0.07);
+    k.spike('solid', [lx, 5.1, lz], [0, 1, 0], 0.8, 0.2, F.iron2);
+  } else { // ore pile + anvil
+    for (let j = 0; j < 6; j++) k.add('stone', jitter(new T.DodecahedronGeometry(0.45, 0), r, 0.2), stoneC(F.rock2), [lx + (r() - 0.5) * 1.6, 0.25, lz + (r() - 0.5) * 1.6], [r(), r(), r()], 1);
+    k.add('solid', prism([[-0.6, 0], [0.6, 0], [0.9, 0.5], [0.6, 0.7], [-0.6, 0.7]], 0.5, 0.04), F.iron, [lx + 1.6, 0.1, lz]);
+    fBrazier(k, [lx - 1.2, 0, lz + 1.0], 0.8, false);
+  }
+}
+
 // ---------------------------------------------------------------- registry
 function fin(g, kind, height) { g.userData.kind = kind; g.userData.height = height; g.name = 'model_' + kind; return g; }
-const BUILD = {
-  V: { tank: V_tank, raider: V_raider, harvester: V_harvester, cc: V_cc, barracks: V_barracks, factory: V_factory, turret_mg: V_turret_mg, turret_cannon: V_turret_cannon, artillery: V_artillery, wall: V_wall, gate: V_gate },
-  C: { tank: C_tank, raider: C_raider, harvester: C_harvester, cc: C_cc, barracks: C_barracks, factory: C_factory, turret_mg: C_turret_mg, turret_cannon: C_turret_cannon, artillery: C_artillery, wall: C_wall, gate: C_gate },
-  N: { crystal: N_crystal, rock: N_rock },
+// Theme registry: each team-1 look is a swappable builder set. mat = material family, gltf = overrides when the cannon glTF is loaded.
+const THEMES = {
+  cyber: { mat: 'V', tank: V_tank, raider: V_raider, harvester: V_harvester, cc: V_cc, barracks: V_barracks, factory: V_factory, turret_mg: V_turret_mg, turret_cannon: V_turret_cannon, artillery: V_artillery, wall: V_wall, gate: V_gate, decor: decorCyber },
+  scrap: { mat: 'C', tank: C_tank, raider: C_raider, harvester: C_harvester, cc: C_cc, barracks: C_barracks, factory: C_factory, turret_mg: C_turret_mg, turret_cannon: C_turret_cannon, artillery: C_artillery, wall: C_wall, gate: C_gate, decor: decorScrap, variants: { wall: 4 } },
+  forge: { mat: 'C', tank: F_tank, raider: F_raider, harvester: F_harvester, cc: F_cc, barracks: F_barracks, factory: F_factory, turret_mg: F_turret_mg, turret_cannon: F_turret_cannon, artillery: F_artillery, wall: F_wall, gate: F_gate, decor: decorForge, variants: { wall: 3 },
+    gltf: { turret_cannon: F_turret_cannon_gltf, artillery: F_artillery_gltf } },
+  neutral: { mat: 'N', crystal: N_crystal, rock: N_rock, variants: { crystal: 4, rock: 4 } },
 };
-const VARIANTS = { 'C:wall': 3, 'N:crystal': 4, 'N:rock': 4 };
+const TEAM_THEME = { 0: 'cyber', 1: 'forge', '-1': 'cyber' };
+// Swap a team's look (call before spawning, or existing meshes keep the old look). Returns false for unknown themes.
+export function setTeamTheme(team, name) { if (!THEMES[name]) return false; TEAM_THEME[team] = name; return true; }
+export function registerTheme(name, set) { THEMES[name] = set; }
 const TPL = new Map();
 
 export function makeModel(THREE, kind, team) {
   T = T || THREE;
-  const theme = kind === 'crystal' || kind === 'rock' ? 'N' : team === 1 ? 'C' : 'V';
-  const fn = BUILD[theme][kind]; if (!fn) return null;
-  const nv = VARIANTS[`${theme}:${kind}`] || 1, v = nv > 1 ? (Math.random() * nv) | 0 : 0, key = `${theme}:${kind}:${v}`;
+  const tn = kind === 'crystal' || kind === 'rock' ? 'neutral' : (TEAM_THEME[team] || 'cyber'), th = THEMES[tn];
+  let fn = th[kind]; if (typeof fn !== 'function' || kind === 'decor') return null;
+  const useG = !!(CANNON && th.gltf?.[kind]); if (useG) fn = th.gltf[kind];
+  const nv = th.variants?.[kind] || 1, v = nv > 1 ? (Math.random() * nv) | 0 : 0, key = `${tn}:${kind}:${v}:${useG ? 'g' : 'p'}`;
   if (!TPL.has(key)) TPL.set(key, fn(v));
   const o = TPL.get(key).clone();
   const tur = o.getObjectByName('turret'); if (tur) o.userData.turret = tur;
@@ -1098,7 +1583,7 @@ export function updateModels(dt, t) {
 // and the defense slots (turrets at R15-17 near the front, artillery at R11-12 at +-90deg and 180deg).
 export function decorateBase(THREE, scene, team, x, z) {
   T = T || THREE;
-  const theme = team === 1 ? 'C' : 'V', k = new Kit(theme), r = rng(team === 1 ? 777 : 555);
+  const th = THEMES[TEAM_THEME[team] || 'cyber'], theme = th.mat, k = new Kit(theme), r = rng(team === 1 ? 777 : 555);
   const s = x < 0 ? 1 : -1;
   const blocks = [{ x, z, r: 9.5 }, { x: x + s * 10, z: z + s * 10, r: 6.5 }, { x: x + s * 10, z: z - s * 10, r: 6.5 }];
   const face = Math.atan2(-z, -x);
@@ -1113,50 +1598,37 @@ export function decorateBase(THREE, scene, team, x, z) {
     if (spots.some(p => Math.hypot(px - p[0], pz - p[1]) < 3.2)) continue;
     spots.push([px, pz]);
   }
-  spots.forEach(([px, pz], i) => {
-    const lx = px - x, lz = pz - z, ry = r() * TAU;
-    if (theme === 'C') {
-      const t = i % 6;
-      if (t === 0) { for (let h = 0; h < 4; h++) cTire(k, [lx + (r() - 0.5) * 0.4, 0.2 + h * 0.32, lz + (r() - 0.5) * 0.4], 0.62); cTire(k, [lx + 1.1, 0.2, lz + 0.4], 0.62); cTire(k, [lx + 0.6, 0.55, lz - 0.9], 0.62, true, r()); }
-      else if (t === 1) { cDrum(k, [lx, 0, lz], C.red, true); cDrum(k, [lx + 0.8, 0, lz + 0.2], C.rust); cDrum(k, [lx + 0.3, 0, lz - 0.75], C.rust3, false, 1.5); }
-      else if (t === 2) cHulk(k, [lx, 0, lz], ry, pick(r, [C.rust, C.red, C.rust2]), r() < 0.5);
-      else if (t === 3) { for (let j = 0; j < 7; j++) k.add(r() < 0.5 ? 'scrap' : 'solid', box(0.6 + r() * 1.4, 0.2 + r() * 0.5, 0.5 + r() * 1.0), pick(r, [C.rust, C.rust2, C.steel2, C.red, C.rust3]), [lx + (r() - 0.5) * 2, 0.15 + r() * 0.6, lz + (r() - 0.5) * 2], [(r() - 0.5) * 0.8, r() * 3, (r() - 0.5) * 0.8]); cSpike(k, [lx, 0.5, lz], [0.2, 1, 0.1], 1.4, 0.1, C.steel); }
-      else if (t === 4) cTotem(k, [lx, 0, lz], 2.6 + r());
-      else { cScaffold(k, [lx, 0, lz], 2.0, 3.5); cDrum(k, [lx + 0.2, 3.55, lz], C.soot, true); }
-    } else {
-      const t = i % 5;
-      if (t === 0) { // light pole
-        k.add('lit', bbox(0.5, 0.2, 0.5, 0.05), V.trim, [lx, 0.1, lz]);
-        k.line('lit', [lx, 0, lz], [lx, 4.2, lz], 0.08, V.body2, 6);
-        k.bar('lit', [lx, 4.2, lz], [lx + 0.9, 4.4, lz], 0.1, V.body2);
-        k.add('glow', box(0.6, 0.08, 0.25), i % 2 ? V.cyan : V.mag, [lx + 0.8, 4.3, lz]);
-        k.add('holo', plane(3.0, 3.0), 0xffffff, [lx + 0.8, 0.06, lz], [-PI / 2, 0, 0], 1, { uv: cellUV(i % 2 ? 3 : 4), fx: 3.5, smooth: true });
-      } else if (t === 1) { // holo billboard
-        for (const d of [-1.2, 1.2]) k.line('lit', [lx + Math.cos(ry) * d, 0, lz - Math.sin(ry) * d], [lx + Math.cos(ry) * d, 4.5, lz - Math.sin(ry) * d], 0.1, V.body2, 6);
-        k.sign([lx, 3.6, lz], ry, 3.0, 1.8, pick(r, [0, 1, 2]), 2);
-        k.add('glow', box(0.2, 0.2, 0.2), V.red, [lx, 4.7, lz], 0, 1, { fx: 1.3 });
-      } else if (t === 2) { // cable bundle
-        for (let j = 0; j < 4; j++) { const off = (j - 1.5) * 0.18; k.line('lit', [lx - 3 * Math.cos(ry) + off, 0.1, lz + 3 * Math.sin(ry)], [lx + 3 * Math.cos(ry) + off, 0.1 + j * 0.03, lz - 3 * Math.sin(ry) + off], 0.08, j % 2 ? V.body2 : V.trim, 5); }
-        k.add('glow', box(0.1, 0.1, 0.1), V.cyan, [lx, 0.22, lz]);
-        k.add('lit', bbox(0.8, 0.9, 0.8, 0.06), V.trim, [lx + 3 * Math.cos(ry), 0.45, lz - 3 * Math.sin(ry)]);
-        k.add('glow', box(0.82, 0.08, 0.82), V.cyan, [lx + 3 * Math.cos(ry), 0.7, lz - 3 * Math.sin(ry)], 0, 1, { fx: 3.2 });
-      } else if (t === 3) { // vending kiosk
-        k.push([lx, 0, lz], [0, ry, 0]);
-        k.add('lit', bbox(1.2, 2.2, 1.0, 0.08), V.body, [0, 1.1, 0]);
-        k.add('glow', box(0.06, 1.4, 0.8), 0x0d2236, [0.61, 1.2, 0]);
-        k.sign([0.64, 1.2, 0], PI / 2, 0.8, 1.4, i % 2, 2);
-        k.bar('glow', [0.62, 2.2, -0.5], [0.62, 2.2, 0.5], 0.06, V.mag);
-        k.pop();
-      } else { // antenna mast / crate stack
-        k.add('lit', bbox(1.4, 1.0, 1.4, 0.08), V.body2, [lx, 0.5, lz], [0, ry, 0]);
-        k.add('lit', bbox(1.0, 0.8, 1.0, 0.08), V.blue, [lx, 1.4, lz], [0, ry + 0.4, 0]);
-        vAntenna(k, [lx, 1.8, lz], 3.0);
-        k.bar('glow', [lx - 0.5, 1.02, lz], [lx + 0.5, 1.02, lz], 0.05, V.cyan);
-      }
-    }
-  });
+  const dec = THEMES[TEAM_THEME[team] || 'cyber'].decor;
+  spots.forEach(([px, pz], i) => dec(k, px - x, pz - z, i, r, r() * TAU));
   const g = k.build('decor_' + theme); g.position.set(x, 0, z); g.userData.kind = 'decor';
   g.traverse(o => { if (o.isMesh) o.raycast = () => {}; });
   scene?.add(g);
   return g;
+}
+
+// Loads the Poly Haven PBR textures and the cannon_01 glTF. Safe to call more than once; never throws.
+let preloadP = null;
+export function preloadModels(THREE) {
+  T = T || THREE;
+  if (preloadP) return preloadP;
+  preloadP = (async () => {
+    pbrMats(); pbr('rocky_terrain_02');
+    const texWait = Object.values(PBR).flatMap(m => [m.map, m.normalMap, m.roughnessMap]).map(t => new Promise(res => {
+      if (t.image) return res(); const iv = setInterval(() => { if (t.image) { clearInterval(iv); res(); } }, 50); setTimeout(() => { clearInterval(iv); res(); }, 8000);
+    }));
+    try {
+      const { GLTFLoader } = await import('three/addons/loaders/GLTFLoader.js');
+      const gltf = await new GLTFLoader().loadAsync(PH('cannon_01/cannon_01_1k.gltf'));
+      gltf.scene.updateMatrixWorld(true);
+      const geos = []; let mat = null;
+      gltf.scene.traverse(o => { if (!o.isMesh) return; mat = mat || o.material;
+        const g = o.geometry.clone(); for (const n of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(n)) g.deleteAttribute(n);
+        g.applyMatrix4(o.matrixWorld); geos.push(g.index ? g.toNonIndexed() : g); });
+      const geo = mergeGeometries(geos, false);
+      if (geo && mat) { mat.envMap = envTex(); mat.envMapIntensity = 0.6; geo.computeBoundingSphere(); CANNON = { geo, mat }; }
+    } catch (e) { console.warn('[models] cannon glTF unavailable, using primitive cannon:', e?.message || e); }
+    await Promise.all(texWait);
+    return !!CANNON;
+  })();
+  return preloadP;
 }

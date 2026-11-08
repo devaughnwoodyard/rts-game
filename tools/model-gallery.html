@@ -10,7 +10,8 @@
 <script type="module">
 // Gallery for js/models.js. ?shot=base0|base1|units0|units1|line|close0|close1   (&night=1)
 import * as THREE from 'three';
-import { makeModel, updateModels, decorateBase } from '../js/models.js';
+import { makeModel, updateModels, decorateBase, preloadModels } from '../js/models.js';
+await preloadModels(THREE);
 const q = new URLSearchParams(location.search), shot = q.get('shot') || 'base0';
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
@@ -54,7 +55,7 @@ function look(tx, tz, dist, pitch, yaw = 0) {
   cam.lookAt(tx, 0, tz); sun.position.set(tx - 50, 90, tz + 30); sun.target.position.set(tx, 0, tz);
 }
 const S = { base0: [-55 + 6, 25, 44, 65], base1: [55 - 6, -25, 44, 65], units0: [-49, 25, 20, 55], units1: [49, -25, 20, 55],
-  line: [0, 10, 34, 62], close0: [-13, 6, 15, 50], close1: [-13, 14, 15, 50], close0b: [11, 6, 15, 50], close1b: [11, 14, 15, 50],
+  line: [0, 10, 34, 62], close0: [-13, 6, 15, 50], close1: [-13, 14, 15, 50], close0b: [11, 6, 15, 50], close1b: [11, 14, 15, 50], tur1: [3, 14, 11, 45],
   ccs: [0, 40, 34, 55], ccv: [-55, 25, 24, 50], ccc: [55, -25, 24, 50] };
 look(...(S[shot] || S.base0));
 document.getElementById('lbl').textContent = shot + ' · ' + n + ' models · calls ' ;

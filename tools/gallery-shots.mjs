@@ -11,8 +11,8 @@ const page = await ctx.newPage();
 const errors = [];
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); if (m.type() === 'warning') console.log('[warn]', m.text()); });
 page.on('pageerror', e => errors.push(String(e)));
-await page.goto(url + '/?gallery=1&debug=1', { waitUntil: 'load' });
-await page.waitForFunction(() => window.world?.gallery, null, { timeout: 30000 });
+await page.goto(url + '/?gallery=1&debug=1' + (process.env.HDRI ? '&hdri=' + process.env.HDRI : ''), { waitUntil: 'load' });
+await page.waitForFunction(() => window.world?.gallery && window.world?.sim && document.querySelector('.v-dbg'), null, { timeout: 60000 });
 await page.waitForTimeout(3000);
 fs.mkdirSync(path.join(root, 'test/out'), { recursive: true });
 for (const clip of clips) {
@@ -20,7 +20,7 @@ for (const clip of clips) {
   for (const view of ['tactical', 'aerial', 'low']) {
     await page.evaluate(v => window.world.setView(v), view);
     await page.waitForTimeout(clip === 'die' ? 2500 : 900);
-    await page.screenshot({ path: path.join(root, `test/out/gallery-${view}-${clip}.png`) });
+    await page.screenshot({ path: path.join(root, `test/out/gallery-${view}-${clip}${process.env.HDRI ? '-' + process.env.HDRI : ''}.png`) });
   }
   // close-up: low view at minimum zoom on the lineup
   await page.evaluate(() => { const w = window.world, g = w.gallery.lineup; w.setView('low'); w.zoomBy(0.01); w.jumpTo(g[2].position.x + 2.5, g[2].position.z - 2); });

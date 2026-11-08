@@ -55,6 +55,7 @@ export async function loadCharacters(world) {
   return true;
 }
 export const charactersReady = () => !!template;
+export const clipNames = () => Object.keys(clips);
 
 // One soldier: { root, mixer, actions, play(name, fade), current }. Faces local +X like every engine model.
 export function makeSoldier(team) {

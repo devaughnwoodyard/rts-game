@@ -5,6 +5,12 @@
 //  - world.lights {hemi, sun} exposed for fx day/night tinting.
 //  - Ground plane is 3x map size; out-of-bounds darkening is a shader patch on world.ground.material.
 //    Fog near/far is set per view in placeCamera (fx only lerps fog colour).
+//  - Wardens are animated squads (js/characters.js, assets/chars/soldier.glb); primitive capsules if the GLB fails.
+//    mesh.userData.anim.play(name) pins a clip (idle/walk/fire/reload/die/harvest/melee); otherwise driven by entity state.
+//  - Non-warden kinds route through models.js makeModel() when present; primitives are the fallback.
+//  - Rendering: ACES, PCF-soft sun shadow fitted to the view (?shadows=0|1024), HDRI scene.environment
+//    (?hdri=resting|harbour|none), envMapIntensity scaled per material (r160 has no scene.environmentIntensity).
+//  - ?gallery=1: warden lineup for screenshots (tools/gallery-shots.mjs).
 import * as THREE from 'three';
 
 const VIEWS = {
@@ -23,6 +29,10 @@ export async function createEngine() {
   const octx = overlay.getContext('2d');
 
   const params = new URLSearchParams(location.search);
+  // optional modules: start fetching in parallel right away, await where needed
+  const modelsP = import('./models.js');
+  const charsP = import('./characters.js').then((c) => c.loadCharacters(null).then(() => c));
+  modelsP.catch(() => {}); charsP.catch(() => {});
   const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -95,7 +105,7 @@ export async function createEngine() {
     if (Math.abs(v - envNight) < 0.01) return;
     envNight = v; for (const m of envMats) applyEnv(m);
   }
-  (async () => {
+  if (params.get('hdri') !== 'none') (async () => {
     try {
       const { RGBELoader } = await import('three/addons/loaders/RGBELoader.js');
       const hdr = await new RGBELoader().loadAsync('assets/ph/hdri/' + (HDRI[params.get('hdri')] || HDRI.resting));
@@ -106,7 +116,7 @@ export async function createEngine() {
 
   // GRAPHICS-B themed models (optional; primitives below are the fallback)
   let models = null;
-  try { models = await import('./models.js'); if (typeof models.makeModel !== 'function') models = null; }
+  try { models = await modelsP; if (typeof models.makeModel !== 'function') models = null; }
   catch (err) { console.warn('[engine] models.js not loaded, using primitives:', err?.message || err); }
 
   const world = {
@@ -277,6 +287,13 @@ export async function createEngine() {
   const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1, metalness: 0 });
   // average linear luminance of the ground texture, so the detail layers below are brightness-neutral
   const uAvg = { value: 0.35 };
+  // rgb = desert hue normalised to luminance 1, w = target average linear albedo
+  const uTint = { value: new THREE.Vector4(1, 1, 1, 0.35) };
+  const setTint = (hex, albedo) => {
+    const c = new THREE.Color(hex), l = c.r * 0.299 + c.g * 0.587 + c.b * 0.114;
+    uTint.value.set(c.r / l, c.g / l, c.b / l, albedo);
+  };
+  setTint(0xd4824a, 0.27);
   function measureTex(img) {
     try {
       const c = document.createElement('canvas'); c.width = c.height = 32;
@@ -290,10 +307,10 @@ export async function createEngine() {
   measureTex(groundTex.image);
   groundMat.onBeforeCompile = (sh) => {
     sh.uniforms.uMapHalf = { value: new THREE.Vector2(world.map.w / 2, world.map.h / 2) };
-    sh.uniforms.uAvg = uAvg;
+    sh.uniforms.uAvg = uAvg; sh.uniforms.uTint = uTint;
     sh.vertexShader = 'varying vec3 vGW;\n' + sh.vertexShader.replace('#include <begin_vertex>',
       '#include <begin_vertex>\n  vGW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
-    sh.fragmentShader = 'varying vec3 vGW;\nuniform vec2 uMapHalf;\nuniform float uAvg;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+    sh.fragmentShader = 'varying vec3 vGW;\nuniform vec2 uMapHalf;\nuniform float uAvg;\nuniform vec4 uTint;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
   { // detail breakup: the same texture at two rotated, larger scales multiplied in hides the 6x4 tiling
     vec2 uvA = mat2(0.8, -0.6, 0.6, 0.8) * vMapUv * 0.31 + vec2(0.37, 0.11);
     vec2 uvB = mat2(0.6, 0.8, -0.8, 0.6) * vMapUv * 0.087 + vec2(0.71, 0.53);
@@ -301,6 +318,10 @@ export async function createEngine() {
     float lb = dot(texture2D(map, uvB, 1.5).rgb, vec3(0.3333));
     float k = clamp(mix(1.0, la / uAvg, 0.55) * mix(1.0, lb / uAvg, 0.9), 0.55, 1.5);
     diffuseColor.rgb *= k;
+    // desert grade: pull the (grey-brown) texture toward the warm palette at constant luminance, then
+    // normalise its average albedo to uTint.w so any ground texture lands at the same brightness
+    float gl = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+    diffuseColor.rgb = mix(diffuseColor.rgb, gl * uTint.rgb, 0.7) * (uTint.w / uAvg);
   }
   {
     vec2 q = max(abs(vGW.xz) - uMapHalf, 0.0);
@@ -345,7 +366,6 @@ export async function createEngine() {
       measureTex(d.image);
       groundMat.map = d; groundMat.normalMap = n; groundMat.normalScale.set(1, 1);
       groundMat.aoMap = a; groundMat.aoMapIntensity = 0.8; groundMat.roughnessMap = a; groundMat.roughness = 1;
-      groundMat.color.set(0xe8b98a);
       groundMat.needsUpdate = true;
     }).catch(() => { console.warn('[engine] PBR ground failed, using ground.jpg'); world.setGroundTexture('assets/ground.jpg'); });
   }
@@ -620,7 +640,7 @@ export async function createEngine() {
 
   // ---------- Animated warden squads (js/characters.js) ----------
   let chars = null;
-  try { chars = await import('./characters.js'); await chars.loadCharacters(world); }
+  try { chars = await charsP; world.characters = { clips: chars.clipNames(), height: chars.SOLDIER_HEIGHT }; }
   catch (err) { console.warn('[engine] soldier.glb not loaded, using primitive wardens:', err?.message || err); chars = null; }
   const squads = new Set();
   const SQUAD_POS = [[0.7, 0], [-0.5, 0.72], [-0.5, -0.72]];
@@ -967,6 +987,7 @@ export async function createEngine() {
   const callbacks = [];
   world.onFrame = (fn) => { callbacks.push(fn); return () => { const i = callbacks.indexOf(fn); if (i >= 0) callbacks.splice(i, 1); }; };
   let last = performance.now();
+  const bootT = performance.now();
   function frame(now) {
     const realDt = Math.max(0, (now - last) / 1000); last = now;
     // clear inputs consumed last frame, then apply new ones
@@ -993,6 +1014,9 @@ export async function createEngine() {
     }
     seen.tap = input.tap; seen.command = input.command; seen.drag = input.drag;
     updateCamera();
+    // Startup: don't render until the other modules have wired up (or 5s). On slow GPUs (and headless
+    // swiftshader) first frames upload/mip every texture and starve main.js's module imports.
+    if (!world.sim && now - bootT < 5000) { requestAnimationFrame(frame); return; }
     try { updateSquads(world.clock.dt); } catch (err) { console.error('[engine] squad anim error', err); }
     try { models?.updateModels?.(world.clock.dt, world.clock.t); } catch (err) { console.error('[engine] updateModels error', err); }
     updateEnvNight();

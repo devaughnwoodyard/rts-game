@@ -142,10 +142,10 @@ const B = {
 /*BEGIN TUNING*/
 export const TUNING = {
   "faction": {
-    "vanguard": 0.9607,
-    "volcanic": 1.0453,
-    "earth": 1.0155,
-    "storm": 0.9806
+    "vanguard": 0.9503,
+    "volcanic": 1.0242,
+    "earth": 0.975,
+    "storm": 1.0538
   },
   "unit": {}
 };

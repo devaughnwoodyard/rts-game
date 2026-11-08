@@ -1,0 +1,127 @@
+/* Vanguard HUD (owner: Engine). Wrappers are pointer-events:none; only buttons/minimap take input. */
+:root {
+  --panel: rgba(15, 22, 32, 0.92);
+  --edge: #39d8ff;
+  --glow: 0 0 8px rgba(57, 216, 255, 0.35);
+  --txt: #ffffff;
+  --dim: #9fb3c8;
+  --p: #2f7cff;
+  --e: #e23a3a;
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+  background: #0b1118; color: var(--txt);
+  font: 15px/1.25 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent; overscroll-behavior: none;
+}
+#gl, #overlay { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+#overlay { z-index: 1; }
+#hud { position: fixed; inset: 0; z-index: 2; pointer-events: none; }
+#hud * { box-sizing: border-box; }
+#hud button, #hud .hit { pointer-events: auto; touch-action: manipulation; }
+
+.v-panel {
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 10px; box-shadow: var(--glow);
+}
+#hud button {
+  font: inherit; color: var(--txt); background: var(--panel); border: 1px solid var(--edge);
+  border-radius: 10px; box-shadow: var(--glow); cursor: pointer; padding: 0 12px;
+}
+#hud button:active { background: #173246; }
+#hud button:disabled { opacity: 0.45; }
+
+/* ---- Top bar ---- */
+.v-top {
+  position: absolute; top: calc(6px + var(--sat)); left: calc(8px + var(--sal)); right: calc(8px + var(--sar));
+  display: flex; align-items: center; gap: 6px; pointer-events: none;
+}
+.v-stats { display: flex; align-items: center; gap: 14px; height: 38px; padding: 0 12px; white-space: nowrap; }
+.v-stat { display: flex; align-items: center; gap: 5px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.v-stat small { color: var(--dim); font-weight: 400; font-size: 12px; }
+.v-ico { width: 10px; height: 14px; display: inline-block; }
+.v-ico.cr { background: #4fe6ff; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); box-shadow: 0 0 6px #4fe6ff; }
+.v-phase { width: 14px; height: 14px; border-radius: 50%; background: #ffcf5a; box-shadow: 0 0 8px #ffcf5a; }
+.v-phase.night { background: transparent; box-shadow: inset -4px -2px 0 0 #c9d6ff; transform: rotate(-20deg); }
+.v-sp { flex: 1; }
+.v-top button { height: 38px; min-width: 56px; font-weight: 600; }
+.v-top .v-def { color: #ffd27a; }
+.v-full { color: #ff7a7a !important; }
+
+/* ---- Banner ---- */
+.v-banner {
+  position: absolute; top: calc(52px + var(--sat)); left: 50%; transform: translateX(-50%);
+  padding: 6px 16px; font-weight: 600; white-space: nowrap; max-width: 70vw; overflow: hidden; text-overflow: ellipsis;
+  opacity: 0; transition: opacity 0.25s;
+}
+.v-banner.on { opacity: 1; }
+
+/* ---- Minimap ---- */
+.v-mini {
+  position: absolute; left: calc(8px + var(--sal)); bottom: calc(8px + var(--sab));
+  padding: 3px; line-height: 0;
+}
+.v-mini canvas { width: 120px; height: 75px; border-radius: 7px; pointer-events: auto; touch-action: none; display: block; }
+
+/* ---- Selection chip ---- */
+.v-chip {
+  position: absolute; bottom: calc(8px + var(--sab)); left: 50%; transform: translateX(-50%);
+  display: none; gap: 10px; align-items: center; height: 36px; padding: 0 12px; white-space: nowrap; font-size: 14px;
+}
+.v-chip.on { display: flex; }
+.v-chip b { color: var(--edge); }
+
+/* ---- Build panel ---- */
+.v-build {
+  position: absolute; right: calc(8px + var(--sar)); bottom: calc(8px + var(--sab));
+  display: none; flex-direction: column; gap: 6px; padding: 8px; align-items: stretch;
+}
+.v-build.on { display: flex; }
+.v-build h4 { margin: 0 2px; font-size: 13px; color: var(--dim); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; display: flex; justify-content: space-between; gap: 8px; }
+.v-build .row { display: flex; gap: 6px; }
+#hud .v-bbtn {
+  position: relative; width: 96px; height: 60px; padding: 6px 8px; text-align: left; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: center;
+}
+.v-bbtn .n { font-weight: 700; font-size: 15px; }
+.v-bbtn .c { font-size: 13px; color: #8feaff; }
+.v-bbtn .q {
+  position: absolute; top: 4px; right: 4px; min-width: 20px; height: 20px; border-radius: 10px; padding: 0 5px;
+  background: var(--edge); color: #04121a; font-size: 12px; font-weight: 800; line-height: 20px; text-align: center; display: none;
+}
+.v-bbtn .q.on { display: block; }
+.v-bbtn .pb { position: absolute; left: 0; bottom: 0; height: 4px; width: 0; background: var(--edge); box-shadow: 0 0 6px var(--edge); }
+
+/* ---- Defense sheet ---- */
+.v-sheet {
+  position: absolute; right: calc(8px + var(--sar)); top: calc(52px + var(--sat));
+  width: 250px; padding: 10px 12px; display: none; flex-direction: column; gap: 6px; pointer-events: none;
+}
+.v-sheet.on { display: flex; }
+.v-sheet .t { font-size: 12px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.v-sheet .nm { font-size: 17px; font-weight: 700; }
+.v-sheet .meta { color: #8feaff; font-size: 14px; }
+.v-sheet .prog { height: 6px; border-radius: 3px; background: #1d2b3a; overflow: hidden; }
+.v-sheet .prog i { display: block; height: 100%; width: 0; background: #ffd27a; }
+.v-sheet .row { display: flex; gap: 6px; }
+.v-sheet button { height: 44px; flex: 1; font-weight: 700; }
+
+/* ---- Game over ---- */
+.v-over {
+  position: absolute; inset: 0; display: none; align-items: center; justify-content: center;
+  background: rgba(5, 9, 14, 0.7); pointer-events: auto;
+}
+.v-over.on { display: flex; }
+.v-over .box { padding: 20px 30px; text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center; }
+.v-over h2 { margin: 0; font-size: 30px; letter-spacing: 0.08em; }
+.v-over.win h2 { color: #6cf0a0; } .v-over.lose h2 { color: #ff6b6b; }
+.v-over button { height: 52px; min-width: 160px; font-size: 17px; font-weight: 700; }
+
+@media (max-height: 340px) {
+  #hud .v-bbtn { width: 86px; height: 56px; }
+  .v-stats { gap: 10px; }
+}

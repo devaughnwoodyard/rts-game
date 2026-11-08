@@ -188,7 +188,7 @@ export function createHud(world, sim) {
   function openPlot(e) {
     if (e?.kind === 'crystal') e = e.plot;
     const bm = world.buildmode;
-    if (typeof bm?.openPlotSheet === 'function') { try { bm.openPlotSheet(e); return; } catch (err) { console.warn('[hud] openPlotSheet failed', err?.message); } }
+    if (typeof bm?.openPlotSheet === 'function') { try { bm.openPlotSheet(e); plotEnt = null; return; } catch (err) { console.warn('[hud] openPlotSheet failed', err?.message); } }
     plotEnt = e; plotKey = ''; plotT = 0;
   }
   function updatePlotSheet(now) {

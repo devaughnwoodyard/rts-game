@@ -779,7 +779,7 @@ export function createAbilities(world, sim, opts = {}) {
             if (a.cls && o.cls !== a.cls) continue;
             if (!ROSTER[o.kind] && a.who !== 'enemies') continue;
             const om = M(o);
-            if (a.hps) om.hps += a.hps;
+            if (a.hps) { om.aura = om.aura || {}; om.aura[id] = Math.max(om.aura[id] || 0, a.hps); } // same aura doesn't stack
             if (a.slowMul) om.slowMul = Math.min(om.slowMul, a.slowMul);
           }
         }
@@ -851,6 +851,7 @@ export function createAbilities(world, sim, opts = {}) {
         if (d.until <= t || !alive(e)) s.dots.splice(i, 1);
       }
       if (!alive(e)) continue;
+      if (m.aura) for (const k in m.aura) m.hps += m.aura[k];
       for (let i = s.hots.length - 1; i >= 0; i--) { const h = s.hots[i]; if (h.until < t) { s.hots.splice(i, 1); continue; } m.hps += h.hps; }
       if (m.hps > 0 && e.hp < e.hpMax) e.hp = Math.min(e.hpMax, e.hp + m.hps * dt);
       // dash

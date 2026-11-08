@@ -854,6 +854,7 @@ export function createSim(world) {
       for (let j = 0; j < cand.length; j++) {
         const b = cand[j];
         if (!b.isUnit || b.id <= a.id || b.state === 'dead' || b.air !== a.air) continue;
+        if ((a.harv || b.harv) && a.team === b.team) continue;   // ECON: haulers slip through friendly units (no crowd lock)
         const dx = b.x - a.x, dz = b.z - a.z, rr = a.r + b.r;
         if (dx > rr || dx < -rr || dz > rr || dz < -rr) continue;
         const d2 = dx * dx + dz * dz;
@@ -1007,7 +1008,7 @@ export function createSim(world) {
       for (const k of producesFor(b)) {
         if (isHarvKind(k) || (hasRoster && !ROSTER[k]) || (!hasRoster && !COMBAT_KINDS.includes(k))) continue;
         const u = unitDef(k);
-        if (!u || !(u.cost >= 0)) continue;
+        if (!u || u.trainable === false || !(econ.unitCost(k).primary >= 0)) continue;
         if (!(u.dps > 0) && u.role !== 'special') continue;
         out.push({ kind: k, b });
       }
@@ -1050,8 +1051,6 @@ export function createSim(world) {
       const reserve = reserveFor(t);
       const army = counts[t].army;
       // Below the minimum army the AI spends everything on units; above it, it banks for defense tiers.
-      const keep = Math.max(T > P.firstWave && army >= P.enemyMinArmy ? reserve : 0, econ.aiReservePrimary(t));
-      const canBuy = (k) => { const c = econ.unitCost(k); return econ.canAfford(t, { primary: c.primary + keep, secondary: c.secondary }); };
       // harvesters (faction kind; cc builds them if the producing building is gone)
       const hk = harvKindFor(t);
       // harvesters first: shortest queue among the buildings that make them (the cc always can)
@@ -1061,6 +1060,9 @@ export function createSim(world) {
       const hb = hbs.sort((a, b) => qOf(a).length - qOf(b).length)[0];
       const needHarv = harvs < econ.aiWantHarvesters(t);
       if (hb && needHarv && qOf(hb).length < P.enemyMaxQueued && econ.canAfford(t, econ.unitCost(hk))) enqueue(hb, hk);
+      // army spending leaves room for economy needs (missing haulers, extractors on claimed land, housing)
+      const keep = Math.max(T > P.firstWave && army >= P.enemyMinArmy ? reserve : 0, econ.aiReservePrimary(t) + (needHarv ? econ.unitCost(hk).primary : 0));
+      const canBuy = (k) => { const c = econ.unitCost(k); return econ.canAfford(t, { primary: c.primary + keep, secondary: c.secondary }); };
       // army: weighted pick from this faction's roster, skewed toward counters of the current rival's army
       const rival = nearestEnemyHQ(t);
       const opts = aiOptions(t, [bar, fac]);

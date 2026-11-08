@@ -162,11 +162,11 @@ export function createBuildMode(world, defense) {
     if (!e || !alive(e)) { S.sel = null; return render(true); }
     let plotName = ''; try { plotName = isPlotLike(e) ? (world.econ?.plotTitle?.(e, P) || 'Plot') : ''; } catch (err) { plotName = 'Plot'; }
     const name = e.kind === 'wall' ? `Wall (${d.grades[(e.grade || 1) - 1]?.name}${e.widened ? ', wide' : ''})` : e.kind === 'gate' ? 'Gate' : plotName || (d.turretKinds(P).find(t => t.kind === e.kind)?.name || e.kind);
-    row.append(el('button', 'tab', `<span class="n">${name}</span><span class="c">${Math.ceil(e.hp)}/${Math.ceil(e.hpMax)}${e.crewNeed ? ` · crew ${e.crewNeed}${e.unmanned ? ' ⚠ unmanned' : ''}` : ''}</span>`)).disabled = true;
+    const hdr = el('button', 'tab', `<span class="n">${name}</span><span class="c">${Math.ceil(e.hp)}/${Math.ceil(e.hpMax)}${e.crewNeed ? ` · crew ${e.crewNeed}${e.unmanned ? ' ⚠ unmanned' : ''}` : ''}</span>`); hdr.disabled = true; row.append(hdr);
     if (isPlotLike(e) && !d.isDefense(e)) {
       let acts = [];
       try { acts = world.econ?.plotActions?.(e, P) || []; } catch (err) { acts = []; }
-      if (!acts.length) row.append(el('button', '', '<span class="n">No actions</span>')).disabled = true;
+      if (!acts.length) { const na = el('button', '', '<span class="n">No actions</span>'); na.disabled = true; row.append(na); }
       acts.forEach((a, i) => act(a.label || a.name || a.id, a.costText || a.reason || (a.cost != null && typeof a.cost === 'object' ? Object.entries(a.cost).filter(([, v]) => v).map(([k, v]) => `${v} ${k === 'primary' ? pri() : sec()}`).join(' ') : a.cost ?? null),
         () => { const fn = a.run || a.do || a.action; return typeof fn === 'function' ? fn.call(a) : world.econ?.doPlotAction?.(e, a.id); }, 'plot-' + (a.id || i), a.enabled !== false));
       return;

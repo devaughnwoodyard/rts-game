@@ -8,7 +8,7 @@ const server = http.createServer((q, r) => { let p = decodeURIComponent(q.url.sp
 await new Promise(r => server.listen(0, r));
 const b = await chromium.launch({ args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
 const page = await (await b.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 1 })).newPage();
-const errs = []; page.on('pageerror', e => errs.push(String(e))); page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+const errs = []; page.on('pageerror', e => { errs.push(String(e)); console.log('PAGEERR', e.stack); }); page.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
 fs.mkdirSync(path.join(root, 'test/out'), { recursive: true });
 const shot = n => page.screenshot({ path: path.join(root, `test/out/build-${n}.png`) });
 let fails = 0; const ok = (c, m) => { console.log((c ? 'PASS ' : 'FAIL ') + m); if (!c) fails++; };
@@ -65,9 +65,7 @@ ok(await page.evaluate(n => window.world.obstacles.length - n, nObs0) === 6, 'si
 await click('tool-wall'); // toggle tool off -> tap mode
 for (let i = 0; i < 4; i++) {
   const p = await scr(wall.segs[i].x, wall.segs[i].z, 1);
-  if (i === 0) console.log('tap target', await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e.tagName + '#' + e.id + '.' + e.className; }, [p.x, p.y]), p);
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(150);
-  if (i === 0) console.log('sel', await page.evaluate(() => window.world.buildMode.state.selected?.kind), await page.textContent('#bm-info'));
   await click('act-widen'); await page.waitForTimeout(100);
 }
 const slots = await page.evaluate(id => window.world.defense._lines.get(id).slots.map(s => ({ x: s.x, z: s.z })), wall.id);

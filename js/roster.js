@@ -141,7 +141,7 @@ const B = {
 
 /*BEGIN TUNING*/
 export const TUNING = {
-  "faction": { "vanguard": 0.83, "volcanic": 0.86, "earth": 0.92, "storm": 1.51 },
+  "faction": { "vanguard": 0.87, "volcanic": 0.83, "earth": 0.93, "storm": 1.48 },
   "unit": {}
 };
 /*END TUNING*/

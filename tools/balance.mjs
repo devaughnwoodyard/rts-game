@@ -287,6 +287,7 @@ function tune() {
       if (!off.length && !changed) return M;
       for (const [a, b] of off) {
         const v = MM[a][b], [win, lose] = v > 0 ? [a, b] : [b, a];
+        if (Math.abs(v) < 0.03) continue; // win-rate noise, margin says it's even
         let top = null, tv = -Infinity;
         for (const k of FACTIONS[win].units.filter(k => ROSTER[k].role !== 'harvester')) { rate(() => mono(k), () => buildArmy(lose, MIXES.combined), 4); if (lastMargin > tv) { tv = lastMargin; top = k; } }
         T.unit[top] = +((T.unit[top] ?? 1) * Math.exp(-0.6 * Math.abs(v))).toFixed(3);
@@ -346,6 +347,21 @@ function writeDoc() {
 }
 
 // ------------------------------------------------------------------ main
+if (args.pair) {
+  apply();
+  const [a, b] = String(args.pair).split(',');
+  const ka = FACTIONS[a].units.filter(k => ROSTER[k].role !== 'harvester'), kb = FACTIONS[b].units.filter(k => ROSTER[k].role !== 'harvester');
+  console.log('mono margin (row vs col), last col = vs combined');
+  console.log(''.padEnd(20) + kb.map(k => k.split('_')[1].slice(0, 8).padStart(9)).join('') + '  combined');
+  for (const x of ka) {
+    const row = kb.map(y => { rate(() => mono(x), () => mono(y), 3); return (lastMargin * 100).toFixed(0).padStart(9); });
+    rate(() => mono(x), () => buildArmy(b, MIXES.combined), 4);
+    console.log(x.padEnd(20) + row.join('') + (lastMargin * 100).toFixed(0).padStart(10));
+  }
+  rate(() => buildArmy(a, MIXES.combined), () => buildArmy(b, MIXES.combined), 10);
+  console.log('combined vs combined margin', (lastMargin * 100).toFixed(0));
+  process.exit(0);
+}
 if (args.doc) { applyTuning(); writeDoc(); process.exit(0); }
 if (args.duel) {
   const mk = (x) => FACTIONS[x] ? () => buildArmy(x, MIXES[args.mix || 'combined']) : () => mono(x);

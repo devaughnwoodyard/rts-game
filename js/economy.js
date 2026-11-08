@@ -606,6 +606,14 @@ export function createEconomy(world, sim, H) {
     }
     return best;
   }
+  // Progress watchdog: a hauler that hasn't closed 1u on its goal in 4s sidesteps (and may ghost own structures).
+  function travel(e, g, dt) {
+    const d = dist(e, g);
+    const w = e._hw || (e._hw = { g: null, d: 0, t: 0 });
+    if (w.g !== g || d < w.d - 1) { w.g = g; w.d = d; w.t = 0; }
+    else if ((w.t += dt) > 4) { w.t = 0; w.d = d; e.detour = 1.5; e.detourSide = Math.random() < 0.5 ? -1 : 1; e.ghost = 1.5; e._nav = null; }
+    H.nav(e, g.x, g.z, dt, g);
+  }
   function updateHarvester(e, dt) {
     const HV = E.harvester;
     if (e.state === 'move') return H.updateMover(e, dt);
@@ -625,7 +633,7 @@ export function createEconomy(world, sim, H) {
       const j = e.job;
       if (!live(j) || j.team !== e.team) { e.job = null; e.state = 'idle'; e.idleT = 99; e._jobTry = false; return; }
       const reach = j.r + e.r + 1.5;
-      if (dist(e, j) > reach) { H.nav(e, j.x, j.z, dt, j); e.harvT = 0; return; }
+      if (dist(e, j) > reach) { travel(e, j, dt); e.harvT = 0; return; }
       e.harvT += dt;
       const cap = carryOf(e);
       const take = Math.min(cap / HV.load * dt, j.stock, cap - e.carry);
@@ -637,7 +645,7 @@ export function createEconomy(world, sim, H) {
       const np = nearestProcessor(e.team, e);
       if (!np) { e.state = 'idle'; return; }
       const p = np.p, reach = p.r + e.r + 1.5;
-      if (dist(e, p) > reach) { H.nav(e, p.x, p.z, dt, p); e.harvT = 0; return; }
+      if (dist(e, p) > reach) { travel(e, p, dt); e.harvT = 0; return; }
       e.harvT += dt;
       if (e.harvT >= HV.deposit) {
         let kind = 'primary', amt = e.carry * np.mul;
@@ -750,6 +758,9 @@ export function createEconomy(world, sim, H) {
     const P = pers(team), s = aiSpent[team], b = P.budget;
     const total = s.expand + s.defense + s.tech;
     const left = res[team].secondary - c.secondary, bc = b[cat] ?? 0.3;
+    // expansion behind schedule gets first call on secondary: other categories must leave the next claim's cost
+    const st = AIS[team];
+    if (cat !== 'expand' && st && st.behind && left < E.claim.aetherSecondary) return false;
     // within its budget share -> fine; over it -> only if enough stays banked for the other categories
     if (total < 150 || ((s[cat] || 0) + c.secondary) / (total + c.secondary) <= bc + 0.12) return true;
     return left >= 140 * (1 - bc);
@@ -757,8 +768,8 @@ export function createEconomy(world, sim, H) {
   function housingSpot(team) {
     const cc = H.hq[team]; if (!cc) return null;
     const d = H.toCenter(cc.x, cc.z);
-    for (let k = 0; k < 24; k++) {
-      const a = Math.atan2(-d.z, -d.x) + (k % 2 ? 1 : -1) * (0.4 + 0.25 * (k >> 1)), r = 15 + (k % 3) * 3;
+    for (let k = 0; k < 40; k++) {
+      const a = Math.atan2(-d.z, -d.x) + (k % 2 ? 1 : -1) * (0.4 + 0.22 * ((k >> 1) % 10)), r = 15 + (k % 3) * 3 + (k >= 20 ? 6 : 0);
       const x = cc.x + Math.cos(a) * r, z = cc.z + Math.sin(a) * r;
       if (Math.abs(x) < hw - 6 && Math.abs(z) < hh - 6 && H.spotFree(x, z, E.costs.housing.r + 1) && !plots.some(p => Math.hypot(p.x - x, p.z - z) < p.r + E.costs.housing.r + 1)) return { x, z };
     }
@@ -783,10 +794,11 @@ export function createEconomy(world, sim, H) {
     // 3. expansion
     const target = Math.min(P.maxPlots, 2 + Math.floor(Math.max(0, now - 20) / 60 * P.expandPerMin + 0.5));
     const claimingNow = plots.some(p => p.claiming === t);
-    if (!claimingNow && plotsOf(t) < target) {
+    st.behind = !claimingNow && plotsOf(t) < target;
+    if (st.behind) {
       const pRate = extractors.filter(x => x.team === t && x.res !== 'secondary').length;
       const sRate = extractors.filter(x => x.team === t && x.res === 'secondary').length;
-      const wantSec = sRate * 1.6 < pRate;
+      const wantSec = sRate * 1.25 < pRate;
       let best = null, bs = Infinity;
       for (const p of claimables(t)) {
         const dz = danger(t, p); if (dz > 1) continue;
@@ -795,7 +807,8 @@ export function createEconomy(world, sim, H) {
         if (p.res === 'secondary') s += wantSec ? -20 : 15;
         if (s < bs) { bs = s; best = p; }
       }
-      if (best && aiCanSpend(t, claimCost(best), 'expand')) claim(t, best);
+      if (!best) st.behind = false;
+      else if (aiCanSpend(t, claimCost(best), 'expand')) claim(t, best);
     }
     // 4. Aether conversion: lean to whichever currency is scarcer
     const want = r.secondary < 120 && r.primary > 250 ? 'secondary' : r.primary < 150 && r.secondary > 200 ? 'primary' : null;

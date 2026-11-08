@@ -89,7 +89,7 @@ export const CONFIG = {
       vanguard: { claimTime: 1.25, hp: 1.3 },                        // slowest to expand, sturdy rigs
       volcanic: { pulse: 12 },                                       // Vent Taps release secondary in pulses
       earth:    { stages: 3, growTime: 1.3, stage2Out: 0.5 },        // groves grow in 3 visible stages
-      storm:    { buildTime: 0.85, weatherPeriod: 150, weatherAmp: 0.5, stormBonus: 0.6 }, // rods surge in storms
+      storm:    { buildTime: 0.85, weatherPeriod: 150, weatherAmp: 0.3, stormBonus: 0.35 }, // rods surge in storms
     },
     names: {
       vanguard: { primary: 'Steel', secondary: 'Fuel', pIcon: '⚙', sIcon: '⛽', pColor: '#c9d3dc', sColor: '#ffb347',

@@ -19,7 +19,8 @@ const page = await ctx.newPage();
 // Optional modules owned by other workers may not exist yet; their 404s aren't sim errors.
 const optional = /roster\.js|abilities\.js|abilitybar\.js|heroes\.js|404 \(Not Found\)/;
 const errors = []; page.on('console', m => { if (m.type() === 'error' && !optional.test(m.text() + (m.location()?.url || ''))) errors.push(m.text()); }); page.on('pageerror', e => errors.push(String(e)));
-await page.goto(`http://127.0.0.1:${port}/`); await page.waitForFunction(() => window.world?.sim && window.world?.econ, null, { timeout: 120000 }); await page.waitForTimeout(1500);
+// `node test/play.mjs fresh` = ?start=fresh (no 10-minutes-in scenario): real opening economy
+await page.goto(`http://127.0.0.1:${port}/${process.argv.includes('fresh') ? '?start=fresh' : ''}`); await page.waitForFunction(() => window.world?.sim && window.world?.econ, null, { timeout: 120000 }); await page.waitForTimeout(1500);
 fs.mkdirSync(path.join(root, 'test/out'), { recursive: true });
 const snap = async (n) => page.screenshot({ path: path.join(root, `test/out/play-${n}.png`) });
 

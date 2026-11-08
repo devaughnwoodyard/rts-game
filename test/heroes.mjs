@@ -86,12 +86,14 @@ for (const fac of FAC) {
     w.heroes.state[h.team].cdUntil = 0;
     const ok = w.heroes.cast(h);
     w.bus.removeEventListener('ability', L);
+    if (h.faction === 'storm') w.clock.speed = 0; // freeze fx for the screenshot (bolts last 0.45s)
     const t = w.clock.t;
     return { ok, evs, dmg: en.map((e, i) => before[i] - e.hp), status: en.map(e => e.status ? { ...e.status } : null), t,
       heroStatus: h.status ? { ...h.status } : null, targets: en.map(e => e.target === h), cd: w.heroes.state[h.team].cdUntil - t };
   }, { setup });
   await page.waitForTimeout(fac === 'volcanic' ? 350 : fac === 'earth' ? 450 : 30);
   await page.screenshot({ path: out(fac) });
+  await page.evaluate(() => { window.world.clock.speed = 1; });
   console.log(fac, JSON.stringify(res));
   check(res.ok && res.evs === 1 && res.cd > 10, `${fac}: cast ok, ability event, cooldown set`);
   if (fac === 'vanguard') check(res.heroStatus?.dmgMul === 0.3 && res.targets.every(Boolean), 'Bulwark: dmgMul 0.3 + enemies retarget');

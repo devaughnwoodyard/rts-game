@@ -46,6 +46,9 @@ BASES.forEach(([bx, bz], team) => {
   ['tank', 'raider', 'harvester', 'tank', 'raider'].forEach((k, i) => put(k, team, ux + (i % 3) * 4.5 - 4, uz + ((i / 3) | 0) * 4.5 - 2, -face));
   ['tank', 'raider', 'harvester', 'turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate'].forEach((k, i) => put(k, team, bx - 30 + i * 5.4, bz + 40, -0.5));
   const SPEC = [['vanguard_flak'], ['volcanic_juggernaut', 'volcanic_ash_cannon'], ['earth_sunwing', 'earth_glider', 'earth_burrower', 'earth_mound'], ['storm_yacht', 'storm_kite']][team];
+  ['processor', 'housing', 'extractor_primary', 'extractor_secondary', 'wall_wide', 'plot'].forEach((k, i) => { const m = put(k, team, bx - 34 + i * 9, bz + 60, -0.4); if (k === 'plot' && m) m.userData.entity = { team, claimed: true }; });
+  [0, 1].forEach(st => { const m = put('extractor_primary', team, bx + 22 + st * 7, bz + 60, -0.4); if (m) m.userData.entity = { stage: st }; });
+  { const m = put('turret_cannon', team, bx + 20, bz + 50, 0); if (m) m.userData.entity = { manned: false }; const w = put('turret_mg', team, bx - 34 + 4 * 9, bz + 60, 0); if (w) w.position.y = 2.6; }
   SPEC.forEach((k, i) => { const m = put(k, team, bx - 30 + i * 6, bz + 48, -0.5); if (m?.userData.air) m.position.y = 6; });
 });
 for (let i = 0; i < 4; i++) { put('crystal', -1, -230 + i * 3, 160); put('rock', -1, -230 + i * 3, 166); }
@@ -54,6 +57,7 @@ function aim(cam, tx, tz, dist, pitch) { const p = pitch * Math.PI / 180; cam.po
 const views = [], W = innerWidth, H = innerHeight;
 if (shot === 'quad') BASES.forEach(([x, z], t) => { aim(cams[t], x + 3, z, 50, 65); views.push([cams[t], (t % 2) * W / 2, (t < 2 ? H / 2 : 0), W / 2, H / 2, x, z]); });
 else if (shot.startsWith('base')) { const t = +shot[4]; const [x, z] = BASES[t]; aim(cams[0], x + 3, z, 44, 65); views.push([cams[0], 0, 0, W, H, x, z]); }
+else if (shot.startsWith('econ')) { const t = +shot[4]; const [x, z] = BASES[t]; aim(cams[0], x - 6, z + 60, 32, 48); views.push([cams[0], 0, 0, W, H, x - 6, z + 60]); }
 else { const t = +shot[5]; const [x, z] = BASES[t]; aim(cams[0], x - 13, z + 44, 24, 50); views.push([cams[0], 0, 0, W, H, x - 13, z + 44]); }
 for (const v of views) { v[0].aspect = v[3] / v[4]; v[0].updateProjectionMatrix(); }
 const t0 = performance.now();
@@ -67,5 +71,5 @@ function frame() {
 }
 frame();
 window.__ready = true;
-window.__calls = () => { const out = {}; for (const k of ['tank', 'raider', 'harvester', 'turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate', 'cc', 'barracks', 'factory']) for (let t = 0; t < 4; t++) { const m = makeModel(THREE, k, t, FACTIONS[t]); let c = 0; m?.traverse(o => { if (o.isMesh) c++; }); out[k + t] = c; } return out; };
+window.__calls = () => { const out = {}; for (const k of ['tank', 'raider', 'harvester', 'turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate', 'cc', 'barracks', 'factory', 'processor', 'housing', 'extractor_primary', 'extractor_secondary', 'wall_wide', 'plot']) for (let t = 0; t < 4; t++) { const m = makeModel(THREE, k, t, FACTIONS[t]); let c = 0; m?.traverse(o => { if (o.isMesh) c++; }); out[k + t] = c; } return out; };
 </script></body></html>

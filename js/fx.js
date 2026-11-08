@@ -652,7 +652,7 @@ export function createFx(world) {
     const g = glows.next(); g.m.visible = true; g.m.material.color.setHex(color); g.m.position.set(x, 0.09, z); g.m.scale.set(r, 1, r);
     g.life = g.max = dur; g.a = o.alpha ?? 0.8; g.pulse = o.pulse || 0; g.follow = o.follow || null; g.r = r; return g;
   }
-  const clouds = meshPool(4, () => { const m = new THREE.Mesh(flatGeo, new THREE.MeshBasicMaterial({ map: radTex, transparent: true, depthWrite: false, color: 0x1a2028 })); m.renderOrder = 8; m.name = 'fx-cloud'; return m; });
+  const clouds = meshPool(4, () => { const m = new THREE.Mesh(flatGeo, new THREE.MeshBasicMaterial({ map: radTex, transparent: true, depthWrite: false, color: 0x4a5560 })); m.renderOrder = 8; m.name = 'fx-cloud'; return m; });
 
   // ---- hex shield bubbles
   const hexMat = () => new THREE.ShaderMaterial({
@@ -1002,7 +1002,7 @@ export function createFx(world) {
     for (const c of clouds.a) {
       if (!c.m.visible) continue;
       c.life -= dt; if (c.life <= 0) { c.m.visible = false; continue; }
-      const u = 1 - c.life / c.max; c.m.material.opacity = 0.75 * Math.min(1, u * 5, (1 - u) * 4);
+      const u = 1 - c.life / c.max; c.m.material.opacity = 0.5 * Math.min(1, u * 5, (1 - u) * 4);
     }
     for (const b of bubbles.a) {
       if (!b.m.visible) continue;

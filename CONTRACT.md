@@ -15,6 +15,27 @@ ONLY the Storm Nomads quadrant is desert. Each quadrant must look like its facti
 - AI: every non-player team runs the same enemy AI (build, harvest, defense tiers, waves). Each AI targets the nearest enemy cc (player or AI). AIs fight each other.
 - Win when all other ccs are destroyed; lose when yours is.
 
+**ECONOMY v3 (new, owned by ECON worker: js/economy.js + economy sections of sim.js/config.js + HUD resource bar):** Two currencies per faction. PRIMARY buys units (and crew); SECONDARY buys upgrades, walls, wall-widening, turrets, defense tiers, tech.
+| faction | PRIMARY (units) — source | SECONDARY (upgrades) — source |
+|---|---|---|
+| vanguard | **Steel** — Ore Mines on rock deposits → Foundry (processor) | **Fuel** — Oil Derricks on claimed land → Refinery tank (stored directly) |
+| volcanic | **Ore** — Ore Cutters on rock/obsidian deposits → Smelter (processor) | **Pressure** — Vent Taps on volcanic pressure pockets (geysers), output pulses |
+| earth | **Sunlight** — planted Solar Groves (sun-disc mirror trees) → Sun Altar (processor) | **Wind** — grown Turbine Trees (living windmills) |
+| storm | **Charge** — Lightning Rods (more output during storms/weather) → Capacitor Hall (processor) | **Water** — Dew Traps/condensers on dunes |
+Chain (the investment/time element): (1) **Claim land**: the map has land PLOTS (≈8 around each base, more in the center incl. the cyan Aether crystal fields). Claiming a plot costs SECONDARY and takes 20s, must be within 40u of an owned building/claimed plot. (2) **Plant/build** the faction's extractor on a claimed plot (costs PRIMARY, build/grow time 30–60s; Earth extractors *grow* in stages). (3) Extractors fill a local stock over time; PRIMARY stock must be **hauled by harvesters to the PROCESSOR building inside your base** (one processor starts in each base; more can be built); SECONDARY extractors trickle directly but slowly. Aether crystal plots: harvested raw crystal converts at the processor into PRIMARY ×2 or SECONDARY ×1 (player toggle on processor). Enemy units can raze extractors and plots revert to neutral.
+**Manpower:** `supply` = army size, cap raised by housing (Barracks +10, Housing/Bunkhouse building +8, max 200). **Turrets, artillery, mortars and siege guns need a CREW** (crew cost in supply: MG turret 2, cannon 3, artillery 4, siege 6). Unmanned defenses don't fire (shown greyed). Crew is assigned automatically if supply is free, else the defense shows "Needs crew".
+**HUD:** top bar shows both currencies with faction names/icons + income/min, and supply used/cap.
+
+**NO MOATS (user, latest):** remove every moat (water/lava/root-bridge) from all factions' tech, AI planner, models and art. Replace those tech slots with something else per faction (Earth: Thornwall / root barrier; Volcanic: Obsidian Spikes field; keep Vanguard minefield and Storm sandstorm wall).
+**Bases visibly evolve with upgrade level:** every base has 4 visual stages driven by `world.ui.baseLevel[team]` (0–3, derived from tech tier count: 0–2 → 0, 3–5 → 1, 6–8 → 2, 9–10 → 3). The cc and processor swap to bigger/more elaborate models per stage (more height, more emissive, more props), and decorateBase adds stage props. Lvl 0 = outpost, 3 = citadel.
+
+**BASE BUILDING v3 (new, owned by BUILDER worker: js/buildmode.js + js/defense.js):** Player edits fortifications directly; defense tiers become TECH UNLOCKS (bought with SECONDARY at the cc: unlocks wall material grades, turret types, moat/minefield/sandstorm abilities, tall turrets, surveillance, siege gun), not auto-placement.
+- **Build menu** (HUD button "Build"): Walls, Gate, Turrets (MG, Cannon, Faction-AA, Artillery if faction has it), Housing, Processor, plus plot Claim/Extractor actions when a plot is tapped.
+- **Walls**: drag on ground to draw a wall line (snaps to a 2u grid, segment = 4u); cost per segment in SECONDARY shown live; red preview if blocked/unaffordable. Tap a wall → **Widen** (expensive; ×3 segment cost; makes the wall 2× thick and creates **turret slots** on top, 1 slot per 2 widened segments) / **Upgrade material** (needs tech; more HP) / **Demolish** (50% refund). **Gate**: replaces a wall segment; own units pass.
+- **Turrets**: place on the ground (inside walls) or on a widened-wall slot (+30% range, +elevation); need crew.
+- AI uses the same systems via an auto-planner (rings around its base, widened sections at chokepoints facing the center).
+- Mobile UX: build mode has a bottom sheet with big buttons; ghost preview follows finger; confirm ✓ / cancel ✕ buttons; pinch/two-finger pan still works in build mode.
+
 **Faction rosters & abilities (new, owned by ROSTER worker in js/roster.js + js/abilities.js + js/abilitybar.js):** asymmetric, balanced to ~50% win rate in equal-cost fights (verified by a headless balance harness). Every non-hero unit has exactly 4 abilities (mix of passives and actives, ≥2 actives). Each faction has 6 unit kinds: infantry, light vehicle, heavy, harvester, special, air (or anti-air for factions weak in air).
 | faction | identity / strength | weakness |
 |---|---|---|

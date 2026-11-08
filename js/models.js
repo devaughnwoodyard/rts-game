@@ -2422,6 +2422,274 @@ function S_kite() {
   return fin(k.build(), 'aa', 3.0);
 }
 
+// ======================================================================= ECONOMY v3 / BASE BUILDING v3 buildings
+// processor, housing, extractor_primary, extractor_secondary per faction; neutral plot; wall_wide. Dynamic state groups
+// ('stage0..2', 'nocrew', 'claimed0..3') are toggled from the entity each frame by applyState() in the instancing sync.
+// ---- VANGUARD (industrial)
+function I_processor() { // Foundry: steel hall, glowing furnace mouth, stacks, ore conveyor
+  const k = new Kit('I');
+  k.add('conc', bbox(9.0, 0.3, 7.0, 0.08), I.conc2, [0, 0.15, 0]);
+  k.add('corr', box(6.4, 4.2, 5.6), 0x3a6ea5, [-0.8, 2.4, 0]);
+  k.add('corr', prism([[-3.0, 0], [3.0, 0], [0, 1.2]], 6.8, 0.04), I.steel, [-0.8, 4.5, 0], [0, PI / 2, 0]);
+  for (const s2 of [1, -1]) iHaz(k, [-0.8, 4.55, s2 * 3.0], 6.8, 0.14, 0.2);
+  k.add('conc', bbox(1.6, 3.0, 3.4, 0.1), I.conc, [3.0, 1.8, 0]);
+  k.add('glow', box(0.1, 1.6, 2.0), 0xff6a1a, [3.82, 1.2, 0], 0, 1, { fx: 3.2 });
+  k.add('steel', box(0.15, 0.3, 2.6), I.dark, [3.85, 2.2, 0]); iHaz(k, [3.86, 2.55, 0], 0.06, 0.25, 2.6);
+  iStack(k, [-3.0, 4.5, -1.6], 5.5, 0.5); iStack(k, [-3.0, 4.5, 1.6], 4.2, 0.45);
+  k.bar('steel', [2.6, 4.2, -2.6], [7.0, 0.6, -2.6], 0.5, I.yellow); // ore conveyor ramp
+  for (let i = 0; i < 6; i++) k.add('steel', box(0.4, 0.12, 0.5), 0x5a4a40, [3.2 + i * 0.65, 3.7 - i * 0.55, -2.6]);
+  k.add('steel', cyl(1.0, 0.5, 1.2, 4), I.yellow, [7.0, 1.0, -2.6], [0, PI / 4, 0]);
+  iFlood(k, [4.2, 0.3, 3.0], 4.5, 0.6); iBeacon(k, [1.6, 4.5, 0]);
+  for (const x of [-3, -1.2, 0.6]) k.add('glow', box(0.8, 0.25, 0.05), 0xff8a3a, [x, 1.4, 2.82], 0, 1, { fx: 3.6 });
+  return fin(k.build(), 'processor', 7.0);
+}
+function I_housing() { // Bunkhouse
+  const k = new Kit('I');
+  k.add('conc', bbox(7.6, 0.3, 5.4, 0.08), I.conc2, [0, 0.15, 0]);
+  k.add('conc', bbox(6.8, 2.6, 4.6, 0.12), I.conc, [0, 1.6, 0]);
+  k.add('corr', prism([[-2.5, 0], [2.5, 0], [0, 0.8]], 7.2, 0.04), 0x3a6ea5, [0, 2.9, 0], [0, PI / 2, 0]);
+  for (const s2 of [1, -1]) { for (const x of [-2.4, -0.8, 0.8, 2.4]) k.add('glow', box(0.7, 0.4, 0.05), I.cyan, [x, 1.9, s2 * 2.32], 0, 1, { fx: 2.1 }); iHaz(k, [0, 2.95, s2 * 2.5], 7.2, 0.12, 0.18); }
+  k.add('shutter', box(0.12, 1.8, 1.2), I.steel, [3.42, 1.2, 0]); iLight(k, [3.45, 2.3, 0], I.sodium, 0.25, 3.9);
+  for (const x of [-2, 1]) k.add('steel', bbox(1.0, 0.6, 0.9, 0.05), I.steel, [x, 3.5, 0.8]);
+  return fin(k.build(), 'housing', 3.8);
+}
+function I_extractor_primary() { // Ore Mine head-frame with spinning sheave wheel
+  const k = new Kit('I');
+  k.add('conc', bbox(6, 0.4, 6, 0.1), I.conc2, [0, 0.2, 0]);
+  for (const [x, z] of [[1.2, 1.2], [1.2, -1.2], [-1.2, 1.2], [-1.2, -1.2]]) k.bar('steel', [x, 0.4, z], [x * 0.35, 7.0, z * 0.35], 0.22, x > 0 ? I.blue : I.blue2);
+  for (let y = 1.5; y < 6.5; y += 1.6) { const w = 1.2 - (y / 7) * 0.8; for (const s2 of [1, -1]) { k.bar('steel', [w, y, s2 * w], [-w, y, s2 * w], 0.08, I.steel); k.bar('steel', [s2 * w, y, w], [s2 * w, y, -w], 0.08, I.steel); } }
+  k.bar('steel', [-2.6, 0.4, 0], [0, 6.6, 0], 0.25, I.yellow);
+  k.add('conc', bbox(2.2, 2.0, 2.4, 0.08), I.conc, [-2.6, 1.4, 1.8]); k.add('corr', box(2.4, 0.1, 2.6), 0x3a6ea5, [-2.6, 2.45, 1.8]);
+  k.sub('spin', [0, 7.2, 0], [0, PI / 2, 0], (q) => { q.add('steel', torus(0.9, 0.08, 4, 18), I.yellow, [0, 0, 0], [0, PI / 2, 0]); for (let i = 0; i < 4; i++) q.bar('steel', [0, Math.cos(i * PI / 4) * 0.9, Math.sin(i * PI / 4) * 0.9], [0, -Math.cos(i * PI / 4) * 0.9, -Math.sin(i * PI / 4) * 0.9], 0.06, I.steel); });
+  for (let i = 0; i < 6; i++) k.add('steel', ico(0.45, 0), 0x6a5a50, [2.2 + (i % 3) * 0.5, 0.5 + ((i / 3) | 0) * 0.4, -1.8 + (i % 2) * 0.5], [i, i * 2, i]);
+  iBeacon(k, [0, 7.95, 0]); iFlood(k, [2.6, 0.4, 2.4], 4.0, 0.8);
+  return fin(k.build(), 'extractor', 8.0);
+}
+function I_extractor_secondary() { // Oil Derrick: nodding pumpjack + tank
+  const k = new Kit('I');
+  k.add('conc', bbox(6.5, 0.3, 3.6, 0.08), I.conc2, [0, 0.15, 0]);
+  for (const s2 of [1, -1]) k.bar('steel', [s2 * 0.9, 0.3, 0.5], [0, 3.2, 0.1], 0.16, I.blue), k.bar('steel', [s2 * 0.9, 0.3, -0.3], [0, 3.2, 0.1], 0.16, I.blue);
+  k.add('steel', bbox(1.4, 1.0, 1.0, 0.06), I.steel, [-2.0, 0.8, 0]);
+  k.add('steel', cyl(0.25, 0.25, 0.6, 8), I.dark, [2.6, 0.6, 0]); k.add('steel', cyl(0.12, 0.12, 1.2, 8), I.steel, [2.6, 0.9, 0]);
+  k.sub('nod', [0, 3.3, 0.1], [0, 0, 0], (q) => {
+    q.add('steel', bbox(5.4, 0.35, 0.3, 0.05), I.yellow, [0.2, 0, 0]);
+    q.add('steel', prism([[0, -0.9], [0.5, -0.6], [0.6, 0.3], [0, 0.4]], 0.5, 0.04), I.yellow, [2.8, 0, 0]);
+    q.line('steel', [3.2, -0.8, 0], [3.2, -2.3, 0], 0.03, I.dark, 4);
+    q.add('steel', bbox(0.8, 0.8, 0.5, 0.05), I.dark, [-2.3, -0.3, 0]);
+  });
+  k.add('steel', cyl(0.9, 0.9, 2.2, 14), 0x8a3a2a, [-1.5, 1.4, -1.4]); k.add('steel', cyl(0.95, 0.95, 0.1, 14), I.dark, [-1.5, 2.5, -1.4]);
+  iBeacon(k, [-1.5, 2.55, -1.4]); iHaz(k, [0, 0.32, 1.75], 6.4, 0.05, 0.1);
+  return fin(k.build(), 'extractor', 4.4);
+}
+// ---- VOLCANIC (palette-swapped forge helpers, X materials)
+function F_processor() { // Smelter: basalt furnace, crucible spout pouring a lava stream
+  const k = new Kit('C'), r = rng(801);
+  fRockFlare(k, [0, 0, 0], 4.2, 0.6, r, 8);
+  k.add('stone', prism([[-3.2, 0], [3.2, 0], [2.4, 4.4], [-2.4, 4.4]], 5.4, 0.08), stoneC(), [-0.6, 0, 0], [0, PI / 2, 0]);
+  k.add('solid', cyl(1.4, 1.0, 1.2, 10), F.iron, [2.4, 3.8, 0]);
+  k.add('glow', cyl(1.25, 1.25, 0.06, 10), F.molten, [2.4, 4.42, 0], 0, 1, { fx: 3.2 });
+  k.bar('glow', [3.6, 4.0, 0], [4.4, 0.25, 0], 0.32, F.molten, { fx: 3.6 }); // pour stream
+  k.add('stone', cyl(1.2, 1.4, 0.4, 10), stoneC(F.rock), [4.4, 0.2, 0]); k.add('glow', cyl(1.0, 1.0, 0.05, 10), F.gold, [4.4, 0.42, 0], 0, 1, { fx: 3.3 });
+  k.embers([4.4, 0.6, 0], 10, 1.2, 1); k.embers([2.4, 4.6, 0], 8, 1.4, 1);
+  fChimney(k, [-2.2, 4.4, -1.4], 3.6, 0.6); fChimney(k, [-2.2, 4.4, 1.4], 2.8, 0.5);
+  for (const s2 of [1, -1]) { fSeam(k, [-3.6, 0.3, s2 * 2.75], [2.0, 0.3, s2 * 2.75], 0.2); fWallBanner(k, [-0.6, 2.4, s2 * 2.7], s2 > 0 ? 0 : PI, 1.3, 2.2); }
+  fCrest(k, -3.0, 1.8, 4.5, 0, 6, 0.6);
+  return fin(k.build(), 'processor', 8.0);
+}
+function F_housing() { // forge-den: half-buried basalt dome with glowing door + chimney
+  const k = new Kit('C'), r = rng(811);
+  fRockFlare(k, [0, 0, 0], 3.3, 0.5, r, 7);
+  k.add('stone', gc('fden', () => new T.SphereGeometry(1, 10, 6, 0, TAU, 0, PI / 2)), stoneC(), [0, 0, 0], 0, [3.2, 2.6, 2.8]);
+  k.add('solid', torus(3.0, 0.2, 4, 18), F.iron, [0, 1.0, 0], [PI / 2, 0, 0]);
+  k.add('stone', bbox(1.2, 1.8, 1.8, 0.1), stoneC(F.rock), [2.9, 0.9, 0]);
+  k.add('glow', box(0.08, 1.3, 1.1), F.molten, [3.52, 0.75, 0], 0, 1, { fx: 3.3 });
+  for (const z of [-0.6, 0, 0.6]) k.add('solid', box(0.1, 1.4, 0.1), F.iron2, [3.56, 0.75, z]);
+  fChimney(k, [-1.2, 2.0, 0.8], 1.8, 0.4); fBrazier(k, [3.6, 0, 1.6], 0.9, false);
+  fCrest(k, -1.5, 1.5, 2.5, 0, 4, 0.5);
+  return fin(k.build(), 'housing', 4.2);
+}
+function F_extractor_primary() { // Ore Cutter drill rig
+  const k = new Kit('C'), r = rng(821);
+  for (let i = 0; i < 7; i++) k.add('stone', jitter(new T.DodecahedronGeometry(0.7, 0), r, 0.2), stoneC(F.rock), polar(2.0 + r(), i, 0.3), [r(), r(), r()], 1);
+  k.add('stone', cyl(1.6, 2.2, 0.6, 8), stoneC(), [0, 0.3, 0]);
+  for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + PI / 4; k.bar('solid', polar(1.6, a, 0.6), polar(0.4, a, 6.5), 0.2, F.iron2); }
+  k.add('solid', cyl(0.5, 0.5, 0.6, 8), F.iron, [0, 6.6, 0]);
+  k.add('solid', cyl(0.18, 0.18, 6.0, 8), F.steel, [0, 3.4, 0]);
+  k.add('solid', cone(0.5, 1.2, 8), F.iron2, [0, 0.5, 0], [PI, 0, 0]);
+  k.add('glow', cyl(0.6, 0.6, 0.06, 10), F.molten, [0, 0.62, 0], 0, 1, { fx: 3.5 });
+  k.add('solid', bbox(1.6, 1.2, 1.4, 0.06), F.rock2, [1.6, 1.2, 1.4]); k.add('glow', box(0.06, 0.4, 0.8), F.molten, [2.42, 1.2, 1.4], 0, 1, { fx: 3.4 });
+  fChimney(k, [1.6, 1.8, 1.4], 1.2, 0.25); k.embers([0, 0.8, 0], 8, 1.5, 0.8);
+  for (let i = 0; i < 5; i++) k.add('glow', ico(0.15, 0), F.gold, polar(2.3, i * 1.3, 0.5), 0, 1, { fx: 3.2 });
+  return fin(k.build(), 'extractor', 7.4);
+}
+function F_extractor_secondary() { // Vent Tap on a steaming geyser; valve cap pulses with pressure
+  const k = new Kit('C'), r = rng(831);
+  for (let i = 0; i < 8; i++) k.add('stone', jitter(new T.DodecahedronGeometry(0.8, 0), r, 0.2), stoneC(F.rock), polar(2.4, i / 8 * TAU, 0.2), [r(), r(), r()], [1.1, 0.6, 1]);
+  k.add('glow', cyl(2.0, 2.0, 0.05, 14), F.molten, [0, 0.15, 0], 0, 1, { fx: 3.1 });
+  k.add('solid', cyl(0.7, 1.0, 1.6, 8), F.iron, [0, 0.8, 0]);
+  for (const a of [0.4, 2.5, 4.4]) { const p = polar(2.6, a, 0.4); k.line('solid', [0, 1.0, 0], p, 0.16, F.iron2, 6); k.add('solid', cyl(0.25, 0.25, 0.3, 8), F.iron, p); }
+  k.sub('pulse', [0, 1.6, 0], [0, 0, 0], (q) => { q.add('solid', cyl(0.85, 0.6, 0.5, 8), F.iron2, [0, 0.25, 0]); q.add('glow', torus(0.75, 0.07, 3, 14), F.gold, [0, 0.3, 0], [PI / 2, 0, 0], 1, { fx: 3.6 }); q.spike('solid', [0, 0.5, 0], [0, 1, 0], 0.6, 0.15, F.iron2); });
+  k.haze([0, 2.4, 0], 5, 1.6); k.smoke([0.3, 3.0, 0], 3, 1.0); k.embers([0, 0.3, 0], 6, 3.5, 0.6);
+  return fin(k.build(), 'extractor', 3.0);
+}
+// ---- EARTH
+function E_processor() { // Sun Altar
+  const k = new Kit('E'), r = rng(841);
+  eSteps(k, 0, 0, 8.0, 8.0, 0.5, 3);
+  k.add('stone', bbox(2.4, 1.4, 2.4, 0.1), eStone(E.sand2), [0, 2.2, 0]);
+  k.add('gold', bbox(2.6, 0.2, 2.6, 0.05), E.gold, [0, 2.95, 0]);
+  eSunDisc(k, [0, 4.6, 0], 1.6, 0.25, 0, 9);
+  k.add('stone', cyl(0.35, 0.5, 1.6, 8), eStone(E.sand2), [0, 3.7, 0]);
+  for (const [x, z] of [[3.2, 3.2], [-3.2, 3.2], [3.2, -3.2], [-3.2, -3.2]]) eMonolith(k, [x, 1.5, z], 2.6, Math.atan2(x, z));
+  for (let i = 0; i < 4; i++) eCrystal(k, polar(2.2, i / 4 * TAU + PI / 4, 1.5), 0.9, 0.3);
+  eTree(k, [-3.6, 1.5, 0], 2.2, 0.8, r);
+  k.embers([0, 5.0, 0], 12, 2.5, 1.0);
+  return fin(k.build(), 'processor', 6.5);
+}
+function E_housing() { // tree-hollow lodge
+  const k = new Kit('E'), r = rng(851);
+  k.push([0, 0, 0], [0, 0, 0], 1);
+  k.add('leaf', cyl(1.5, 2.3, 4.0, 9), E.bark, [0, 2.0, 0]);
+  for (let i = 0; i < 7; i++) { const a = i / 7 * TAU; k.line('leaf', [0, 1.0, 0], polar(3.0 + r() * 0.6, a, -0.2), 0.35, E.bark, 5); }
+  for (const [x, y, z, rr] of [[0, 5.2, 0, 2.8], [1.8, 4.6, 0.8, 1.9], [-1.7, 4.8, -0.6, 2.0], [0.2, 4.4, -1.9, 1.8], [-0.4, 4.5, 1.9, 1.8]]) k.add('leaf', ico(rr, 0), y > 5 ? E.leaf2 : E.leaf, [x, y, z], [r(), r(), r()], [1, 0.75, 1]);
+  k.pop();
+  k.add('stone', box(0.2, 1.6, 1.0), 0x2a1a10, [2.1, 0.9, 0]);
+  k.add('glow', box(0.06, 1.4, 0.8), E.sun, [2.2, 0.85, 0], 0, 1, { fx: 3.3 });
+  for (const [y, a] of [[2.6, 0.9], [2.2, -1.2], [3.0, 2.6]]) k.add('glow', box(0.06, 0.35, 0.35), E.sun, polar(1.85, a + PI / 2, y), [0, a + PI / 2, 0], 1, { fx: 3.6 });
+  for (let i = 0; i < 3; i++) k.add('stone', bbox(0.9, 0.2, 0.6, 0.04), eStone(E.sand2), [2.6 + i * 0.6, 0.1, 0]);
+  eBanner(k, [2.6, 0, 1.8], 3.6, 0.8, 0);
+  return fin(k.build(), 'housing', 6.0);
+}
+function eMirrorTree(k, p, h, n, beam) { // slender gold-veined tree whose canopy is sun-disc mirrors
+  k.add('leaf', cyl(0.12, 0.22, h, 6), E.bark, [p[0], p[1] + h / 2, p[2]]);
+  for (let i = 0; i < n; i++) { const a = i / n * TAU + 0.4, q = polar(0.6, a, p[1] + h * (0.7 + 0.12 * (i % 2)));
+    k.line('leaf', [p[0], p[1] + h * 0.6, p[2]], [p[0] + q[0], q[1], p[2] + q[2]], 0.06, E.bark, 4);
+    eSunDisc(k, [p[0] + q[0], q[1] + 0.1, p[2] + q[2]], 0.35 + h * 0.03, 0.6, a, beam && i === 0 ? 3 : 0); }
+  k.add('leaf', ico(0.35, 0), E.leaf2, [p[0], p[1] + h, p[2]]);
+}
+function E_extractor_primary() { // Solar Grove in 3 growth stages (entity.stage 0..2)
+  const k = new Kit('E'), r = rng(861);
+  k.add('stone', cyl(2.8, 3.0, 0.2, 10), eStone(E.rock2), [0, 0.1, 0]);
+  k.add('leaf', cyl(2.6, 2.6, 0.06, 10), 0x4a7a38, [0, 0.22, 0]);
+  for (let i = 0; i < 6; i++) eBoulder(k, polar(3.0, i / 6 * TAU, 0.15), 0.3, r);
+  k.sub('stage0', [0, 0, 0], [0, 0, 0], (q) => { for (const p of [[0, 0.2, 0], [1.2, 0.2, 0.8], [-1.0, 0.2, -0.9]]) { q.add('leaf', cyl(0.05, 0.08, 0.6, 5), E.bark, [p[0], 0.5, p[2]]); q.add('leaf', ico(0.25, 0), E.leaf2, [p[0], 0.85, p[2]]); } });
+  k.sub('stage1', [0, 0, 0], [0, 0, 0], (q) => { eMirrorTree(q, [0, 0.2, 0], 2.0, 2, false); eMirrorTree(q, [1.3, 0.2, 0.9], 1.4, 1, false); eMirrorTree(q, [-1.2, 0.2, -1.0], 1.5, 1, false); });
+  k.sub('stage2', [0, 0, 0], [0, 0, 0], (q) => { eMirrorTree(q, [0, 0.2, 0], 3.6, 3, true); eMirrorTree(q, [1.6, 0.2, 1.1], 2.8, 3, false); eMirrorTree(q, [-1.5, 0.2, -1.2], 3.0, 3, true); q.embers([0, 2.5, 0], 6, 3, 0.8); });
+  return fin(k.build(), 'extractor', 4.5);
+}
+function E_extractor_secondary() { // Turbine Tree: living windmill with spinning leaf-blades
+  const k = new Kit('E'), r = rng(871);
+  k.add('leaf', cyl(0.45, 0.9, 6.0, 8), E.bark, [0, 3.0, 0]);
+  for (let i = 0; i < 6; i++) k.line('leaf', [0, 0.8, 0], polar(1.8 + r() * 0.5, i / 6 * TAU, -0.2), 0.22, E.bark, 5);
+  for (const [y, a] of [[2.5, 0.5], [4.0, 2.6]]) k.add('leaf', ico(0.7, 0), E.leaf, polar(0.8, a, y), [r(), r(), r()], [1, 0.7, 1]);
+  k.add('gold', torus(0.5, 0.08, 4, 12), E.gold, [0, 5.4, 0], [PI / 2, 0, 0]);
+  k.sub('spin', [0.6, 6.0, 0], [0, 0, 0], (q) => {
+    q.add('gold', sph(0.35, 8, 6), E.gold, [0, 0, 0]);
+    for (let i = 0; i < 5; i++) { const a = i / 5 * TAU; q.addM('leaf', ico(1, 0), i % 2 ? E.leaf2 : E.leaf, new T.Matrix4().makeRotationX(a).multiply(new T.Matrix4().compose(new T.Vector3(0, 1.5, 0), new T.Quaternion(), new T.Vector3(0.15, 1.4, 0.5)))); }
+  });
+  k.add('glow', new T.OctahedronGeometry(1, 0), E.sun, [0, 0.9, 0.9], 0, [0.2, 0.4, 0.2], { fx: 3.3 });
+  return fin(k.build(), 'extractor', 7.5);
+}
+// ---- STORM
+function S_processor() { // Capacitor Hall
+  const k = new Kit('S');
+  k.add('stone', cyl(4.4, 4.8, 0.4, 12), S.sand, [0, 0.2, 0]);
+  sDome(k, [0, 0.4, 0], 3.2, 2.8, S.cloth);
+  for (const [x, z] of [[3.4, 2.2], [3.4, -2.2], [-3.2, 2.6], [-3.2, -2.6]]) {
+    k.add('solid', cyl(0.7, 0.7, 3.2, 10), S.grey2, [x, 2.0, z]);
+    for (let i = 0; i < 4; i++) k.add('glow', torus(0.72, 0.04, 3, 14), S.volt, [x, 0.9 + i * 0.7, z], [PI / 2, 0, 0], 1, { fx: 3 + i * 0.2 });
+    k.add('solid', cyl(0.5, 0.75, 0.3, 10), S.bone, [x, 3.7, z]); k.add('glow', sph(0.25, 8, 6), S.volt, [x, 4.0, z], 0, 1, { fx: 3.6, smooth: true });
+  }
+  sArc(k, [3.4, 4.0, 2.2], [3.4, 4.0, -2.2], 5); sArc(k, [-3.2, 4.0, 2.6], [-3.2, 4.0, -2.6], 5);
+  sTesla(k, [0, 3.2, 0], 2.6, 4, 0.9);
+  sBanner(k, [4.2, 0.4, 0], 4.2, 0.9, 0);
+  return fin(k.build(), 'processor', 7.0);
+}
+function S_housing() { // tent-barrack
+  const k = new Kit('S');
+  k.add('stone', cyl(3.0, 3.3, 0.25, 10), S.sand, [0, 0.12, 0]);
+  sDome(k, [0, 0.25, 0], 2.6, 2.4, S.cloth);
+  k.add('jacq', gc('domeBandS', () => new T.CylinderGeometry(1, 1, 1, 18, 1, true)), S.crimson, [0, 0.9, 0], 0, [2.62, 0.6, 2.62], { smooth: true });
+  k.add('solid', bbox(1.0, 1.4, 1.2, 0.06), S.grey2, [2.5, 0.9, 0]); k.add('glow', box(0.05, 1.0, 0.8), S.volt, [3.02, 0.8, 0], 0, 1, { fx: 3.3 });
+  sBanner(k, [-2.0, 0.25, 2.0], 3.4, 0.8, 0.5);
+  return fin(k.build(), 'housing', 3.4);
+}
+function S_extractor_primary() { // Lightning Rod mast with ground grid
+  const k = new Kit('S');
+  k.add('stone', cyl(2.4, 2.8, 0.3, 10), S.sand, [0, 0.15, 0]);
+  for (let i = 0; i < 6; i++) { const a = i / 6 * TAU; k.bar('glow', [0, 0.32, 0], polar(2.6, a, 0.32), 0.05, S.volt, { fx: 3 + i * 0.1 }); k.bar('solid', polar(1.6, a, 0.3), [0, 6.0, 0], 0.08, S.bone); }
+  k.add('solid', cyl(0.12, 0.25, 10.0, 8), S.bone, [0, 5.0, 0]);
+  for (let i = 0; i < 6; i++) k.add('solid', torus(0.5 - i * 0.05, 0.06, 4, 12), S.grey, [0, 4.0 + i * 0.9, 0], [PI / 2, 0, 0]);
+  k.spike('solid', [0, 10.0, 0], [0, 1, 0], 1.4, 0.12, S.grey2);
+  k.add('glow', sph(0.3, 8, 6), S.volt, [0, 10.4, 0], 0, 1, { fx: 1.6, smooth: true });
+  for (let i = 0; i < 4; i++) sArc(k, [0, 10.6, 0], polar(1.4, i * 1.6, 7.8 - i * 0.5), 4);
+  sBanner(k, [2.2, 0.3, 0], 3.2, 0.8, 0);
+  k.sparks([0, 10.4, 0], 6, 0.8);
+  return fin(k.build(), 'extractor', 11.5);
+}
+function S_extractor_secondary() { // Dew Trap: tall mesh condensers + glistening water
+  const k = new Kit('S');
+  k.add('stone', bbox(5.0, 0.3, 3.4, 0.08), S.sand, [0, 0.15, 0]);
+  for (const x of [-1.6, 0, 1.6]) {
+    for (const s2 of [1, -1]) k.add('solid', cyl(0.07, 0.1, 4.6, 6), S.bone, [x + s2 * 0.6, 2.45, 0]);
+    k.bar('solid', [x - 0.65, 4.7, 0], [x + 0.65, 4.7, 0], 0.08, S.bone2);
+    k.add('energy', box(1.2, 4.0, 0.06), 0x9fd8ff, [x, 2.6, 0], 0, 1, { fx: 3.3 });
+    for (let i = 0; i < 4; i++) k.add('glow', sph(0.07, 6, 4), S.white, [x + (i % 2 ? 0.3 : -0.25), 1.2 + i * 0.85, 0.06], 0, 1, { fx: 3 + i * 0.22, smooth: true });
+    k.add('solid', box(1.3, 0.15, 0.4), S.grey, [x, 0.55, 0]);
+  }
+  k.add('solid', cyl(0.7, 0.7, 1.2, 12), S.grey2, [0, 0.9, 1.3]); k.add('glow', cyl(0.62, 0.62, 0.05, 12), 0x5ab8ff, [0, 1.52, 1.3], 0, 1, { fx: 3.4 });
+  sBanner(k, [2.3, 0.3, -1.4], 3.0, 0.7, 0);
+  return fin(k.build(), 'extractor', 4.8);
+}
+// ---- NEUTRAL land plot (ring + stakes; claimed0..3 groups show the owner's colour)
+const FCOL = [0x2fb8ff, 0xff5a12, 0x5fd35f, 0xe8d27a];
+function N_plot() {
+  const k = new Kit('N');
+  k.add('glow', torus(5.0, 0.06, 3, 48), 0xd8d0c0, [0, 0.06, 0], [PI / 2, 0, 0], [1, 1, 0.4], { fx: 3.9 });
+  for (let i = 0; i < 4; i++) { const p = polar(5.0, i / 4 * TAU + PI / 4, 0); k.add('rock', cyl(0.07, 0.09, 0.9, 5), 0x8a7a64, [p[0], 0.45, p[2]], [0.1, 0, 0.05]); k.add('rock', box(0.18, 0.12, 0.04), 0xd0c8b0, [p[0], 0.85, p[2]]); }
+  for (let t = 0; t < 4; t++) k.sub('claimed' + t, [0, 0, 0], [0, 0, 0], (q) => {
+    q.add('glow', torus(5.0, 0.12, 3, 48), FCOL[t], [0, 0.08, 0], [PI / 2, 0, 0], [1, 1, 0.4], { fx: 3.2 });
+    for (let i = 0; i < 4; i++) { const p = polar(5.0, i / 4 * TAU + PI / 4, 0); q.add('glow', box(0.2, 0.3, 0.06), FCOL[t], [p[0], 0.95, p[2]], 0, 1, { fx: 3.5 }); }
+    q.add('rock', cyl(0.07, 0.09, 3.2, 5), 0x4a4440, [0, 1.6, 0]);
+    q.add('rock', box(0.05, 0.9, 1.3), FCOL[t], [0, 2.7, 0.65]);
+    q.add('glow', sph(0.14, 6, 4), FCOL[t], [0, 3.3, 0], 0, 1, { fx: 1.4 });
+  });
+  return fin(k.build(), 'plot', 3.5);
+}
+// ---- wide wall: two wall bodies side by side, crenellated deck, turret slot pad
+const DECK = { I: ['conc', 0xb8bcc0], X: ['stone', 0x6a5e58], C: ['stone', 0x6a5e58], E: ['stone', 0xd8a070], S: ['stone', 0xd8bf8a] };
+function makeWideWall(themeName) {
+  return (v) => {
+    const th = THEMES[themeName], g = new T.Group(); const one = th.wall(v); one.position.z = -0.9; g.add(one); const two = th.wall(v); two.position.z = 0.9; g.add(two);
+    const build = () => {
+      const k = new Kit(th.mat === 'X' ? 'C' : th.mat), [slot, col] = DECK[th.mat] || ['stone', 0x888888];
+      k.add(slot, bbox(4.0, 0.3, 3.4, 0.06), col, [0, 2.3, 0]);
+      for (const z of [-1.55, 1.55]) for (const x of [-1.5, -0.5, 0.5, 1.5]) k.add(slot, bbox(0.6, 0.6, 0.3, 0.05), col, [x, 2.75, z]);
+      k.add(slot, cyl(1.3, 1.35, 0.12, 12), 0x3a3a3c, [0, 2.5, 0]);
+      k.add('glow', torus(1.32, 0.05, 3, 24), 0xfff0c0, [0, 2.57, 0], [PI / 2, 0, 0], 1, { fx: 3.5 });
+      return k.build('deck');
+    };
+    g.add(th.mat === 'X' ? withPal(VOLC, build)() : build());
+    return fin(g, 'wall_wide', 2.9);
+  };
+}
+// unmanned-defense marker: small grey "no crew" flag (shown when entity.manned === false / needsCrew)
+const NOCREW_MAT = () => MATS.nocrew || (MATS.nocrew = new T.MeshStandardMaterial({ color: 0x8a8a8a, roughness: 0.9, side: T.DoubleSide }));
+function addNoCrew(g) {
+  const n = new T.Group(); n.name = 'nocrew'; n.visible = false;
+  const pole = new T.Mesh(gc('ncPole', () => new T.CylinderGeometry(0.04, 0.04, 2.2, 5)), NOCREW_MAT()); pole.position.set(-0.9, 2.3, 0.9);
+  const flag = new T.Mesh(gc('ncFlag', () => new T.PlaneGeometry(0.9, 0.55)), NOCREW_MAT()); flag.position.set(-0.45, 3.1, 0.9);
+  n.add(pole, flag); g.add(n); return g;
+}
+function applyState(px) { // entity-driven toggles for stage / crew / claimed groups
+  const e = px.o.userData.entity; if (!e || !px.state) return;
+  for (const [name, grp] of px.state) {
+    if (name === 'nocrew') grp.visible = e.manned === false || e.needsCrew === true || e.unmanned === true;
+    else if (name.startsWith('stage')) grp.visible = +name[5] === Math.max(0, Math.min(2, (e.stage ?? 2) | 0));
+    else if (name.startsWith('claimed')) grp.visible = (e.claimed || e.owner != null || e.team >= 0) && +name[7] === (e.owner ?? e.claimedBy ?? e.team);
+  }
+}
+
 // ======================================================================= neutral
 function N_crystal(variant) {
   const k = new Kit('N'), r = rng(301 + variant * 13);
@@ -2544,13 +2812,14 @@ const THEMES = {
     gltf: { turret_cannon: F_turret_cannon_gltf, artillery: F_artillery_gltf } },
   volcanic: { mat: 'X', tank: withPal(VOLC, F_tank), raider: withPal(VOLC, F_raider), harvester: withPal(VOLC, F_harvester), cc: withPal(VOLC, F_cc), barracks: withPal(VOLC, F_barracks),
     factory: withPal(VOLC, F_factory), turret_mg: withPal(VOLC, F_turret_mg), turret_cannon: withPal(VOLC, F_turret_cannon), artillery: withPal(VOLC, F_artillery), wall: withPal(VOLC, F_wall), gate: withPal(VOLC, F_gate),
+    processor: withPal(VOLC, F_processor), housing: withPal(VOLC, F_housing), extractor_primary: withPal(VOLC, F_extractor_primary), extractor_secondary: withPal(VOLC, F_extractor_secondary), wall_wide: makeWideWall('volcanic'),
     juggernaut: withPal(VOLC, F_juggernaut), ash: withPal(VOLC, F_ashcannon), special: withPal(VOLC, F_juggernaut), air: withPal(VOLC, F_ashcannon),
     decor: withPal(VOLC, (a) => a), variants: { wall: 3 }, gltf: { turret_cannon: withPal(VOLC, F_turret_cannon_gltf), artillery: withPal(VOLC, F_artillery_gltf) } },
-  industrial: { mat: 'I', tank: I_tank, raider: I_raider, harvester: I_harvester, cc: I_cc, barracks: I_barracks, factory: I_factory, turret_mg: I_turret_mg, turret_cannon: I_turret_cannon, artillery: I_artillery, wall: I_wall, gate: I_gate, decor: decorInd, variants: { wall: 2 }, special: I_flak, air: I_flak, flak: I_flak },
-  earth: { mat: 'E', tank: E_tank, raider: E_raider, harvester: E_harvester, cc: E_cc, barracks: E_barracks, factory: E_factory, turret_mg: E_turret_mg, turret_cannon: E_turret_cannon, artillery: E_artillery, wall: E_wall, gate: E_gate, decor: decorEarth, variants: { wall: 3 }, sunwing: E_sunwing, glider: E_glider, burrow: E_burrower, mound: E_mound, special: E_burrower, air: E_sunwing,
+  industrial: { mat: 'I', tank: I_tank, raider: I_raider, harvester: I_harvester, cc: I_cc, barracks: I_barracks, factory: I_factory, turret_mg: I_turret_mg, turret_cannon: I_turret_cannon, artillery: I_artillery, wall: I_wall, gate: I_gate, decor: decorInd, variants: { wall: 2 }, processor: I_processor, housing: I_housing, extractor_primary: I_extractor_primary, extractor_secondary: I_extractor_secondary, wall_wide: makeWideWall('industrial'), special: I_flak, air: I_flak, flak: I_flak },
+  earth: { mat: 'E', tank: E_tank, raider: E_raider, harvester: E_harvester, cc: E_cc, barracks: E_barracks, factory: E_factory, turret_mg: E_turret_mg, turret_cannon: E_turret_cannon, artillery: E_artillery, wall: E_wall, gate: E_gate, decor: decorEarth, variants: { wall: 3 }, processor: E_processor, housing: E_housing, extractor_primary: E_extractor_primary, extractor_secondary: E_extractor_secondary, wall_wide: makeWideWall('earth'), sunwing: E_sunwing, glider: E_glider, burrow: E_burrower, mound: E_mound, special: E_burrower, air: E_sunwing,
     gltf: { artillery: E_artillery_gltf } },
-  storm: { mat: 'S', tank: S_tank, raider: S_raider, harvester: S_harvester, cc: S_cc, barracks: S_barracks, factory: S_factory, turret_mg: S_turret_mg, turret_cannon: S_turret_cannon, artillery: S_artillery, wall: S_wall, gate: S_gate, decor: decorStorm, variants: { wall: 2 }, yacht: S_raider, kite: S_kite, tesla: S_kite, special: S_kite, air: S_kite },
-  neutral: { mat: 'N', crystal: N_crystal, rock: N_rock, variants: { crystal: 4, rock: 4 } },
+  storm: { mat: 'S', tank: S_tank, raider: S_raider, harvester: S_harvester, cc: S_cc, barracks: S_barracks, factory: S_factory, turret_mg: S_turret_mg, turret_cannon: S_turret_cannon, artillery: S_artillery, wall: S_wall, gate: S_gate, decor: decorStorm, variants: { wall: 2 }, processor: S_processor, housing: S_housing, extractor_primary: S_extractor_primary, extractor_secondary: S_extractor_secondary, wall_wide: makeWideWall('storm'), yacht: S_raider, kite: S_kite, tesla: S_kite, special: S_kite, air: S_kite },
+  neutral: { mat: 'N', crystal: N_crystal, rock: N_rock, plot: N_plot, variants: { crystal: 4, rock: 4 } },
 };
 const TEAM_THEME = { 0: 'industrial', 1: 'volcanic', 2: 'earth', 3: 'storm', '-1': 'cyber' };
 // Swap a team's look (call before spawning, or existing meshes keep the old look). Returns false for unknown themes.
@@ -2576,18 +2845,20 @@ function resolveKind(kind, faction) {
   for (const [re, k2] of ROLE_WORDS) if (re.test(rest)) return [k2, fac];
   return [BASE_KINDS.has(rest) ? rest : 'tank', fac];
 }
-const BASE_KINDS = new Set(['tank', 'raider', 'harvester', 'cc', 'barracks', 'factory', 'turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate', 'crystal', 'rock']);
+const BASE_KINDS = new Set(['tank', 'raider', 'harvester', 'cc', 'barracks', 'factory', 'turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate', 'crystal', 'rock', 'processor', 'housing', 'extractor_primary', 'extractor_secondary', 'plot', 'wall_wide']);
 export function makeModel(THREE, kind, team, faction) {
   T = T || THREE;
   const orig = kind; [kind, faction] = resolveKind(kind, faction); if (!kind) return null;
-  const tn = kind === 'crystal' || kind === 'rock' ? 'neutral' : themeOf(team, faction), th = THEMES[tn];
+  const tn = kind === 'crystal' || kind === 'rock' || kind === 'plot' ? 'neutral' : themeOf(team, faction), th = THEMES[tn];
   let fn = th[kind]; if (typeof fn !== 'function' || kind === 'decor') return null;
   const useG = !!(CANNON && th.gltf?.[kind]); if (useG) fn = th.gltf[kind];
   const nv = th.variants?.[kind] || 1, v = nv > 1 ? (Math.random() * nv) | 0 : 0, key = `${tn}:${kind}:${v}:${useG ? 'g' : 'p'}`;
-  if (!TPL.has(key)) TPL.set(key, fn(v));
+  if (!TPL.has(key)) { const tp = fn(v); if (kind === 'turret_mg' || kind === 'turret_cannon' || kind === 'artillery') addNoCrew(tp); TPL.set(key, tp); }
   const o = TPL.get(key).clone();
   const tur = o.getObjectByName('turret'); if (tur) o.userData.turret = tur;
   regAnim(o); if (orig !== kind) o.userData.kind = orig;
+  const state = []; o.traverse(c => { if (/^(stage\d|nocrew|claimed\d)$/.test(c.name)) { state.push([c.name, c]); c.visible = c.name === 'stage2'; } });
+  if (state.length) o.userData.stateGroups = state;
   if (INST_ON && kind !== 'rock') addProxy(key, TPL.get(key), o);
   return o;
 }
@@ -2603,8 +2874,8 @@ let SCENE = null;
 function addProxy(key, tpl, o) {
   let b = BATCH.get(key);
   if (!b) { const tm = []; tpl.traverse(m => { if (m.isMesh) tm.push(m); }); b = { tm, proxies: [], ims: [], cap: 0 }; BATCH.set(key, b); }
-  const pm = []; o.traverse(m => { if (m.isMesh) { pm.push(m); m.visible = false; } });
-  b.proxies.push({ o, pm, born: U.time.value });
+  const pm = [], chains = []; o.traverse(m => { if (m.isMesh) { pm.push(m); m.visible = false; const ch = []; for (let a = m.parent; a && a !== o; a = a.parent) ch.push(a); chains.push(ch); } });
+  b.proxies.push({ o, pm, chains, state: o.userData.stateGroups || null, born: U.time.value });
 }
 function growBatch(b, need) {
   const cap = Math.max(8, 1 << Math.ceil(Math.log2(need)));
@@ -2624,14 +2895,17 @@ function syncInstances(tt) {
     if (!SCENE) continue;
     const live = b.proxies.filter(p => p.vis);
     if (live.length > b.cap || !b.ims.length) growBatch(b, Math.max(1, live.length));
-    live.forEach((p, n) => { p.o.updateMatrixWorld(true); for (let j = 0; j < b.ims.length; j++) b.ims[j].setMatrixAt(n, p.pm[j].matrixWorld); });
-    for (const im of b.ims) { im.count = live.length; im.instanceMatrix.needsUpdate = true; if (im.frustumCulled && live.length) im.computeBoundingSphere(); }
+    const cnt = b.ims.map(() => 0);
+    for (const p of live) { applyState(p); p.o.updateMatrixWorld(true);
+      for (let j = 0; j < b.ims.length; j++) { if (p.chains[j].length && !p.chains[j].every(a => a.visible)) continue; b.ims[j].setMatrixAt(cnt[j]++, p.pm[j].matrixWorld); } }
+    b.ims.forEach((im, j) => { im.count = cnt[j]; });
+    for (const im of b.ims) { im.instanceMatrix.needsUpdate = true; if (im.frustumCulled && live.length) im.computeBoundingSphere(); }
   }
 }
 function p_root(px) { let r = px.o, vis = r.visible; while (r.parent) { r = r.parent; if (!r.visible) vis = false; } return { root: r, inScene: !!r.isScene, vis }; }
 
 const ANIM = [];
-function regAnim(o) { o.traverse(c => { if (c.name === 'spin' || c.name === 'spinY' || c.name === 'bob' || c.name === 'airShadow') ANIM.push({ o: c, y0: c.position.y, ph: Math.random() * TAU, born: U.time.value }); }); }
+function regAnim(o) { o.traverse(c => { if (c.name === 'spin' || c.name === 'spinY' || c.name === 'bob' || c.name === 'airShadow' || c.name === 'nod' || c.name === 'pulse') ANIM.push({ o: c, y0: c.position.y, ph: Math.random() * TAU, born: U.time.value }); }); }
 export function updateModels(dt, t) {
   U.time.value = Number.isFinite(t) ? t : U.time.value + (dt || 0);
   if (TEX.scan) TEX.scan.offset.y = -U.time.value * 0.35;
@@ -2641,6 +2915,8 @@ export function updateModels(dt, t) {
     const a = ANIM[i]; let r = a.o; while (r.parent) r = r.parent;
     if (!r.isScene) { if (tt - a.born > 10 || tt < a.born) ANIM.splice(i, 1); continue; }
     if (a.o.name === 'airShadow') { const pr = a.o.parent; a.o.position.y = -(pr.position.y) / (pr.scale.y || 1) + 0.06; continue; }
+    if (a.o.name === 'nod') { a.o.rotation.z = Math.sin(tt * 1.6 + a.ph) * 0.32; continue; }
+    if (a.o.name === 'pulse') { const k2 = Math.pow(Math.max(0, Math.sin(tt * 1.3 + a.ph)), 6); a.o.position.y = a.y0 + k2 * 0.35; a.o.scale.set(1 + k2 * 0.12, 1 + k2 * 0.3, 1 + k2 * 0.12); continue; }
     if (a.o.name === 'spin') a.o.rotation.x += (dt || 0.016) * 2.2; else if (a.o.name === 'spinY') a.o.rotation.y += (dt || 0.016) * 1.2; else a.o.position.y = a.y0 + Math.sin(tt * 1.1 + a.ph) * 0.35;
   }
 }

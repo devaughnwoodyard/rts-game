@@ -38,18 +38,18 @@ function buildArmy(f, mix) {
   for (;;) {
     let best = null, bd = -Infinity;
     for (const r of roles) {
-      const k = roleKind(f, r), c = ROSTER[k].cost;
+      const k = roleKind(f, r), c = ROSTER[k].value;
       if (c > left) continue;
       const d = mix[r] * BUDGET - (spent[r] || 0) - c / 2;
       if (d > bd) { bd = d; best = r; }
     }
     if (!best) break;
     const k = roleKind(f, best);
-    out.push(k); spent[best] = (spent[best] || 0) + ROSTER[k].cost; left -= ROSTER[k].cost;
+    out.push(k); spent[best] = (spent[best] || 0) + ROSTER[k].value; left -= ROSTER[k].value;
   }
   return out;
 }
-const mono = (k) => { const n = Math.max(1, Math.floor(BUDGET / ROSTER[k].cost)); return Array(n).fill(k); };
+const mono = (k) => { const n = Math.max(1, Math.floor(BUDGET / ROSTER[k].value)); return Array(n).fill(k); };
 
 // ------------------------------------------------------------------ fake world + sim
 function fight(armyA, armyB, maxT = 150) {
@@ -65,7 +65,7 @@ function fight(armyA, armyB, maxT = 150) {
       const r = ROSTER[kind];
       const e = { id: nextId++, kind, team, x, z, rot: 0, r: r.r, hp: r.hp, hpMax: r.hp, cls: r.cls, light: r.light, air: r.air,
         canHitAir: r.canHitAir, armor: r.armor, state: 'idle', target: null, cooldown: 0, range: r.range, dps: r.dps, speed: r.speed,
-        fireRate: r.cooldown || 1, splash: r.splash, minRange: r.minRange, isUnit: !r.mine, scan: rnd() * 0.3, cost: r.cost };
+        fireRate: r.cooldown || 1, splash: r.splash, minRange: r.minRange, isUnit: !r.mine, scan: rnd() * 0.3, cost: r.value };
       if (opts) Object.assign(e, opts);
       ents.push(e); return e;
     },
@@ -184,23 +184,27 @@ function fight(armyA, armyB, maxT = 150) {
   }
   let v0 = 0, v1 = 0;
   for (const e of ents) if (e.isUnit && !e.summoned && e.state !== 'dead') { const v = e.cost * Math.max(0, e.hp) / e.hpMax; if (e.team === 0) v0 += v; else v1 += v; }
-  lastFight = { t: +t.t.toFixed(1), v0: Math.round(v0), v1: Math.round(v1), left: ents.filter(e => e.isUnit && !e.summoned).map(e => e.team + ':' + e.kind.split('_')[1]).join(' ') };
+  lastFight = { m: (v0 - v1) / BUDGET, t: +t.t.toFixed(1), v0: Math.round(v0), v1: Math.round(v1), left: ents.filter(e => e.isUnit && !e.summoned).map(e => e.team + ':' + e.kind.split('_')[1]).join(' ') };
   return v0 > v1 ? 1 : v0 < v1 ? 0 : 0.5;
 }
 let lastFight = null;
 
-// A vs B, n fights each side-order (A as team 0 and as team 1). Returns A's win rate.
+// A vs B, n fights each side-order (A as team 0 and as team 1). Returns A's win rate; lastMargin = A's mean
+// surviving-value margin in [-1, 1] (smooth signal used by the tuner).
+let lastMargin = 0;
 function rate(mkA, mkB, n = N) {
-  let w = 0;
-  for (let i = 0; i < n; i++) { w += fight(mkA(), mkB()); w += 1 - fight(mkB(), mkA()); }
+  let w = 0, m = 0;
+  for (let i = 0; i < n; i++) { w += fight(mkA(), mkB()); m += lastFight.m; w += 1 - fight(mkB(), mkA()); m -= lastFight.m; }
+  lastMargin = m / (2 * n);
   return w / (2 * n);
 }
+let MM = null; // margin matrix of the last matrix() call
 function matrix(mix, n = N) {
-  const M = {};
-  for (const a of F) { M[a] = {}; for (const b of F) M[a][b] = a === b ? 0.5 : null; }
+  const M = {}; MM = {};
+  for (const a of F) { M[a] = {}; MM[a] = {}; for (const b of F) { M[a][b] = a === b ? 0.5 : null; MM[a][b] = 0; } }
   for (let i = 0; i < F.length; i++) for (let j = i + 1; j < F.length; j++) {
     const r = rate(() => buildArmy(F[i], MIXES[mix]), () => buildArmy(F[j], MIXES[mix]), n);
-    M[F[i]][F[j]] = r; M[F[j]][F[i]] = 1 - r;
+    M[F[i]][F[j]] = r; M[F[j]][F[i]] = 1 - r; MM[F[i]][F[j]] = lastMargin; MM[F[j]][F[i]] = -lastMargin;
   }
   return M;
 }
@@ -226,7 +230,7 @@ function identity() {
   const topEhp = all.slice().sort((a, b) => ehp(b) - ehp(a))[0];
   out.push([`Volcanic heavy has highest effective HP (top: ${topEhp} ${ehp(topEhp).toFixed(0)})`, topEhp === 'volcanic_juggernaut']);
   const air = (f) => FACTIONS[f].units.filter(k => ROSTER[k].air);
-  const airArmy = (f) => { const ks = air(f); const o = []; let left = BUDGET, i = 0; for (;;) { const k = ks[i++ % ks.length]; if (ROSTER[k].cost > left) { if (ks.every(q => ROSTER[q].cost > left)) break; continue; } o.push(k); left -= ROSTER[k].cost; } return o; };
+  const airArmy = (f) => { const ks = air(f); const o = []; let left = BUDGET, i = 0; for (;;) { const k = ks[i++ % ks.length]; if (ROSTER[k].value > left) { if (ks.every(q => ROSTER[q].value > left)) break; continue; } o.push(k); left -= ROSTER[k].value; } return o; };
   for (const f of F) if (f !== 'earth' && air(f).length) {
     const r = rate(() => airArmy('earth'), () => airArmy(f), Math.max(10, N >> 1));
     out.push([`Earth air beats ${f} air (equal cost): ${pct(r)}`, r > 0.5]);
@@ -259,35 +263,39 @@ function validate() {
 const T = JSON.parse(JSON.stringify(TUNING));
 T.faction = T.faction || {}; T.unit = T.unit || {};
 const apply = () => applyTuning(T);
+// Tuner: drives the smooth margin signal to 0 (win rate follows), in log-power space with per-faction adaptive steps.
 function tune() {
   let M;
+  const eta = Object.fromEntries(F.map(f => [f, 0.12])), prev = {};
   for (let it = 0; it < ITERS; it++) {
     apply();
     M = matrix('combined');
     const off = offBand(M);
-    const avg = Object.fromEntries(F.map(f => [f, F.filter(g => g !== f).reduce((s, g) => s + M[f][g], 0) / 3]));
-    const spread = Math.max(...F.map(f => Math.abs(avg[f] - 0.5)));
-    console.log(`iter ${it}: ` + F.map(f => `${f} ${pct(avg[f])} x${T.faction[f]}`).join('  ') + `  off-band: ${off.map(([a, b, v]) => a[0] + b[0] + pct(v).trim()).join(' ') || 'none'}`);
-    let capped = 0;
-    if (spread < 0.1) {
-      // unit cap: no single unit > 60% cost-efficient vs everything
+    const sc = Object.fromEntries(F.map(f => [f, F.filter(g => g !== f).reduce((s, g) => s + MM[f][g], 0) / 3]));
+    const spread = Math.max(...F.map(f => Math.abs(sc[f])));
+    console.log(`iter ${it}: ` + F.map(f => `${f} m${(sc[f] * 100).toFixed(0)} x${T.faction[f]}`).join('  ') + `  off-band: ${off.map(([a, b, v]) => a.slice(0, 2) + '-' + b.slice(0, 2) + pct(v).trim()).join(' ') || 'none'}`);
+    let changed = 0;
+    if (spread < 0.06) {
       for (const k of combatKinds()) {
         const e = monoEff(k);
-        if (e > 0.58) { T.unit[k] = +((T.unit[k] ?? 1) * Math.max(0.85, 1 - (e - 0.55) * 0.8)).toFixed(3); capped++; console.log(`   cap ${k} mono ${pct(e)} -> ${T.unit[k]}`); }
+        if (e > 0.58) { T.unit[k] = +((T.unit[k] ?? 1) * Math.max(0.85, 1 - (e - 0.55) * 0.6)).toFixed(3); changed++; console.log(`   cap ${k} mono ${pct(e)} -> ${T.unit[k]}`); }
       }
-      if (!off.length && !capped) return M;
-      // non-transitive pairs: nerf the winner's unit that does best vs the loser
-      for (const [a, b, v] of off) {
-        const [win, lose] = v > 0.5 ? [a, b] : [b, a];
-        let top = null, tv = -1;
-        for (const k of FACTIONS[win].units.filter(k => ROSTER[k].role !== 'harvester')) { const r = rate(() => mono(k), () => buildArmy(lose, MIXES.combined), 6); if (r > tv) { tv = r; top = k; } }
-        T.unit[top] = +((T.unit[top] ?? 1) * (1 - Math.abs(v - 0.5) * 0.35)).toFixed(3);
-        console.log(`   pair ${win}>${lose} ${pct(Math.max(v, 1 - v))}: nerf ${top} (mono ${pct(tv)}) -> ${T.unit[top]}`);
+      if (!off.length && !changed) return M;
+      for (const [a, b] of off) {
+        const v = MM[a][b], [win, lose] = v > 0 ? [a, b] : [b, a];
+        let top = null, tv = -Infinity;
+        for (const k of FACTIONS[win].units.filter(k => ROSTER[k].role !== 'harvester')) { rate(() => mono(k), () => buildArmy(lose, MIXES.combined), 4); if (lastMargin > tv) { tv = lastMargin; top = k; } }
+        T.unit[top] = +((T.unit[top] ?? 1) * Math.exp(-0.6 * Math.abs(v))).toFixed(3);
+        console.log(`   pair ${win}>${lose} margin ${(Math.abs(v) * 100).toFixed(0)}: nerf ${top} -> ${T.unit[top]}`);
       }
     }
-    for (const f of F) T.faction[f] = +((T.faction[f] ?? 1) * Math.pow(0.5 / Math.min(0.85, Math.max(0.15, avg[f])), spread < 0.1 ? 0.3 : 0.5)).toFixed(3);
+    for (const f of F) {
+      if (prev[f] != null && Math.sign(prev[f]) !== Math.sign(sc[f])) eta[f] *= 0.6; else eta[f] = Math.min(0.3, eta[f] * 1.15);
+      prev[f] = sc[f];
+      T.faction[f] = +((T.faction[f] ?? 1) * Math.exp(-eta[f] * sc[f] * 2)).toFixed(4);
+    }
     const g = Math.pow(F.reduce((p, f) => p * T.faction[f], 1), 1 / F.length);
-    for (const f of F) T.faction[f] = +(T.faction[f] / g).toFixed(3);
+    for (const f of F) T.faction[f] = +(T.faction[f] / g).toFixed(4);
   }
   apply();
   return matrix('combined');

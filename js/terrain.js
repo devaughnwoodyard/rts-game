@@ -66,20 +66,20 @@ export function biomeAt(x, z) {
 // ---------------------------------------------------------------- texture layers
 // tile = world units per texture repeat; tint = linear multiplier; gray = desaturate on load (tinted per-vertex)
 const LAYERS = [
-  { f: 'ph/concrete_floor_worn_001', tile: 9, tint: [1.08, 1.04, 0.98] },   // 0 industrial concrete
-  { f: 'ph/aerial_asphalt_01', tile: 20, tint: [0.62, 0.62, 0.64] },        // 1 asphalt
-  { f: 'ph/dark_rock', tile: 11, tint: [1.5, 1.25, 1.15] },                 // 2 basalt
-  { f: 'ph/cracked_red_ground', tile: 13, tint: [1.05, 0.72, 0.6] },        // 3 cracked red earth
-  { f: 'ph/forest_ground_04', tile: 9, tint: [0.95, 1.0, 0.85] },           // 4 forest floor
-  { f: 'ph/aerial_grass_rock', tile: 16, tint: [0.92, 1.0, 0.78] },         // 5 grass + rock
-  { f: 'ph/aerial_sand', tile: 15, tint: [1.32, 1.06, 0.74] },              // 6 sand
-  { f: 'ph/rock_face', tile: 10, tint: [1.25, 0.85, 0.7] },                 // 7 red mountainside rock
-  { f: 'ph/rocky_trail', tile: 9, tint: [1.08, 0.98, 0.86] },               // 8 badlands gravel
-  { f: 'ph/dry_riverbed_rock', tile: 14, tint: [1.12, 0.96, 0.84] },        // 9 badlands rock / mesa strata
-  { f: 'ph/burned_ground_01', tile: 11, tint: [0.95, 0.85, 0.8] },          // 10 burned ground / slag
-  { f: 'tex/rusty_metal_02', tile: 6, tint: [1, 1, 1] },                    // 11 rust (cranes)
-  { f: 'tex/box_profile_metal_sheet', tile: 5, tint: [1, 1, 1], gray: 1 },  // 12 corrugated (containers)
-  { f: 'tex/concrete_panels', tile: 8, tint: [1, 1, 1] },                   // 13 concrete panels (ruins)
+  { f: 'ph/concrete_floor_worn_001', tile: 9, lum: 0.5, tint: [1.04, 1.0, 0.95] },      // 0 industrial concrete
+  { f: 'ph/aerial_asphalt_01', tile: 20, lum: 0.3, tint: [0.95, 0.95, 1.0] },          // 1 asphalt
+  { f: 'ph/dark_rock', tile: 11, lum: 0.2, tint: [1.0, 0.92, 0.9] },                   // 2 basalt
+  { f: 'ph/cracked_red_ground', tile: 13, lum: 0.3, tint: [1.0, 0.8, 0.72] },          // 3 cracked red earth
+  { f: 'ph/forest_ground_04', tile: 9, lum: 0.36, tint: [0.95, 1.0, 0.88] },           // 4 forest floor
+  { f: 'ph/aerial_grass_rock', tile: 16, lum: 0.36, tint: [0.85, 1.0, 0.78] },         // 5 grass + rock
+  { f: 'ph/aerial_sand', tile: 15, lum: 0.66, tint: [1.22, 1.02, 0.78] },              // 6 sand
+  { f: 'ph/rock_face', tile: 10, lum: 0.42, tint: [1.15, 0.9, 0.8] },                  // 7 red mountainside rock
+  { f: 'ph/rocky_trail', tile: 9, lum: 0.46, tint: [1.0, 0.97, 0.92] },                // 8 badlands gravel
+  { f: 'ph/dry_riverbed_rock', tile: 14, lum: 0.42, tint: [0.98, 0.94, 0.9] },         // 9 badlands rock / mesa strata
+  { f: 'ph/burned_ground_01', tile: 11, lum: 0.24, tint: [1, 0.95, 0.92] },            // 10 burned ground / slag
+  { f: 'tex/rusty_metal_02', tile: 6, lum: 0.5, tint: [1, 1, 1] },                     // 11 rust (cranes)
+  { f: 'tex/box_profile_metal_sheet', tile: 5, lum: 0.55, tint: [1, 1, 1], gray: 1 },  // 12 corrugated (containers)
+  { f: 'tex/concrete_panels', tile: 8, lum: 0.55, tint: [1, 1, 1] },                   // 13 concrete panels (ruins)
 ];
 const NL = LAYERS.length;
 const L = { CONC: 0, ASPH: 1, BASALT: 2, CRACK: 3, FOREST: 4, GRASS: 5, SAND: 6, REDROCK: 7, GRAVEL: 8, STRATA: 9, BURN: 10, RUST: 11, CORR: 12, PANEL: 13 };
@@ -258,7 +258,7 @@ function groundMaterial(arr, splatTex, maskTex, U, quality) {
     Object.assign(sh.uniforms, {
       tLayers: { value: arr.diff }, tSplat: { value: splatTex }, tMask: { value: maskTex },
       uHalf: { value: new THREE.Vector2(HW, HH) }, uTime: U.uTime,
-      uTile: { value: LAYERS.map(l => l.tile) }, uTint: { value: LAYERS.map((l, i) => new THREE.Vector3(...l.tint).multiplyScalar(0.42 / Math.max(0.12, arr.avg[i] ** 2.2 * 1.4 + 0.12))) },
+      uTile: { value: LAYERS.map(l => l.tile) }, uTint: { value: layerTints(arr) },
     });
     if (normals) sh.uniforms.tLayersN = { value: arr.nor };
     sh.vertexShader = 'varying vec3 vGW;\n' + sh.vertexShader.replace('#include <begin_vertex>',
@@ -282,13 +282,13 @@ ${NOISE_GLSL}
   int tPL[5] = int[5](0, 2, 4, 6, 8); int tVL[5] = int[5](1, 3, 5, 6, 9);
   int tP1 = tPL[tI1], tV1 = tVL[tI1], tP2 = tPL[tI2];
   float tVw = smoothstep(0.4, 0.6, tMk.r);
-  if (tI1 == 1) tVw = smoothstep(0.35, 0.55, max(tMk.r, tMk.g));
+  if (tI1 == 1) tVw = smoothstep(0.5, 0.75, tMk.r) * 0.8;
   if (tI1 == 2) { if (tMk.a > tVw) tV1 = 7; tVw = max(tVw, tMk.a); }
   if (tI1 == 3) tVw = 0.3 + 0.25 * tMk.r;
   vec2 tUv1 = tWp / uTile[tP1];
   vec2 tUv2 = tWp / uTile[tP2] + 0.5;
   vec3 tCP = texture(tLayers, vec3(tUv1, float(tP1))).rgb * uTint[tP1];
-  vec3 tCV = texture(tLayers, vec3(mat2(0.8, -0.6, 0.6, 0.8) * tWp / (uTile[tV1] * (tV1 == tP1 ? 2.7 : 1.0)) + 0.37, float(tV1))).rgb * uTint[tV1];
+  vec3 tCV = texture(tLayers, vec3(mat2(0.8, -0.6, 0.6, 0.8) * tWp / (uTile[tV1] * (tV1 == tP1 ? 2.7 : 1.7)) + 0.37, float(tV1))).rgb * uTint[tV1];
   vec3 tCA = mix(tCP, tCV, tVw);
   vec3 tCB = texture(tLayers, vec3(tUv2, float(tP2))).rgb * uTint[tP2];
   float tA = tW[tI1], tB = tW[tI2]; float tS = max(tA + tB, 1e-4); tA /= tS; tB /= tS;
@@ -300,6 +300,9 @@ ${NOISE_GLSL}
   float tWI = tW[0], tWV = tW[1], tWF = tW[2], tWD = tW[3], tWB = tW[4];
   // macro brightness breakup (hides tiling at aerial zoom)
   tCol *= 0.86 + 0.28 * tNoise(tWp * 0.021 + 7.0) * (0.7 + 0.3 * tNoise(tWp * 0.09));
+  // badlands: pull toward neutral grey-brown
+  float tBl = dot(tCol, vec3(0.299, 0.587, 0.114));
+  tCol = mix(tCol, tBl * vec3(1.06, 0.98, 0.88), tWB * 0.45);
   // industrial: slab joints on concrete, oil stains
   vec2 tG = abs(fract(tWp / 7.5) - 0.5);
   float tJoint = smoothstep(0.472, 0.492, max(tG.x, tG.y));
@@ -319,12 +322,12 @@ ${NOISE_GLSL}
   vec3 tEmis = vec3(0.0);
   float tLz = tWV * tMk.g;
   if (tLz > 0.02) {
-    float tE = tCrack(tWp * 0.15 + vec2(tNoise(tWp * 0.05), tNoise(tWp * 0.05 + 3.0)) * 1.6);
-    float tC = 1.0 - smoothstep(0.012, 0.06, tE);
-    float tHalo = 1.0 - smoothstep(0.03, 0.16, tE);
+    float tE = tCrack(tWp * 0.23 + vec2(tNoise(tWp * 0.05), tNoise(tWp * 0.05 + 3.0)) * 1.6);
+    float tC = 1.0 - smoothstep(0.01, 0.045, tE);
+    float tHalo = 1.0 - smoothstep(0.02, 0.12, tE);
     tCol = mix(tCol, tCol * 0.3, tHalo * tLz);
     float tPulse = 0.7 + 0.3 * sin(uTime * 1.6 + tWp.x * 0.07 + tWp.y * 0.05);
-    tEmis = vec3(1.0, 0.3, 0.04) * (tC * 2.4 + tHalo * 0.25) * tLz * tPulse;
+    tEmis = vec3(1.0, 0.28, 0.03) * (tC * 2.2 + tHalo * 0.18) * tLz * tPulse;
   }
   float tRough = tWI * 0.8 + tWV * 0.86 + tWF * 0.95 + tWD * 0.97 + tWB * 0.98;
   tRough = mix(tRough, 0.28, tOil);
@@ -353,6 +356,8 @@ ${NOISE_GLSL}
   return mat;
 }
 
+// per-layer linear multiplier: normalise each texture to its target sRGB brightness, then apply the hue tint
+const layerTints = (arr) => LAYERS.map((l, i) => new THREE.Vector3(...l.tint).multiplyScalar(Math.pow(l.lum / Math.max(0.05, arr.avg[i]), 2.2)));
 // props: triplanar from the same layer array, per-vertex layer + colour, flat shaded, fog-of-war darkened
 function propsMaterial(arr, U, smooth = false) {
   const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, vertexColors: true, roughness: 0.92, metalness: 0, flatShading: !smooth });
@@ -360,7 +365,7 @@ function propsMaterial(arr, U, smooth = false) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, {
       tLayers: { value: arr.diff },
-      uTile: { value: LAYERS.map(l => l.tile) }, uTint: { value: LAYERS.map((l, i) => new THREE.Vector3(...l.tint).multiplyScalar(0.42 / Math.max(0.12, arr.avg[i] ** 2.2 * 1.4 + 0.12))) },
+      uTile: { value: LAYERS.map(l => l.tile) }, uTint: { value: layerTints(arr) },
     });
     sh.vertexShader = 'attribute float aLayer;\nvarying float vLayer;\nvarying vec3 vWN;\n' + sh.vertexShader.replace('#include <begin_vertex>',
       '#include <begin_vertex>\n  vLayer = aLayer; vWN = normalize(mat3(modelMatrix) * objectNormal);');
@@ -474,7 +479,7 @@ export async function createTerrain(world) {
     cliff(B[2], p.x, p.z, r, 6 + R() * 9, i + 77, red()); obs(p.x, p.z, r * 1.05, 'cliff'); feats.push({ x: p.x, z: p.z, r, t: 'cliff' });
   }
   // groves
-  const greens = [[0.16, 0.32, 0.12], [0.22, 0.38, 0.13], [0.3, 0.42, 0.14], [0.42, 0.45, 0.15], [0.12, 0.27, 0.12]];
+  const greens = [[0.035, 0.085, 0.03], [0.05, 0.11, 0.032], [0.08, 0.13, 0.035], [0.13, 0.14, 0.04], [0.03, 0.07, 0.035]];
   for (let i = 0; i < 18; i++) {
     const r = 7 + R() * 7, p = place(2, r, 0.55, 400, 8); if (!p) continue;
     obs(p.x, p.z, r * 0.9, 'grove'); feats.push({ x: p.x, z: p.z, r, t: 'grove' });
@@ -587,7 +592,7 @@ export async function createTerrain(world) {
   for (let i = 0; i < 60; i++) { // dry grass tufts
     const x = (R() - 0.5) * MAP.w, z = (R() - 0.5) * MAP.h, [b, w] = dominant(x, z);
     if (b !== 3 || w < 0.4 || blockedBy(x, z, 0.5, 0)) continue;
-    bushes.push({ x, z, s: 0.6 + R() * 0.6, h: 0.5 + R() * 0.4, y: 0.15, c: [0.55, 0.48, 0.25], ry: R() * 6 });
+    bushes.push({ x, z, s: 0.6 + R() * 0.6, h: 0.5 + R() * 0.4, y: 0.15, c: [0.2, 0.16, 0.07], ry: R() * 6 });
   }
 
   // ---------- SW: industrial ----------
@@ -674,7 +679,7 @@ export async function createTerrain(world) {
   function rail(pts) {
     const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)));
     const len = curve.getLength(), n = Math.floor(len / 1.3);
-    const ballast = C3(0.32, 0.29, 0.26), tie = C3(0.3, 0.2, 0.13), steel = C3(0.55, 0.53, 0.52);
+    const ballast = C3(0.07, 0.065, 0.06), tie = C3(0.06, 0.035, 0.022), steel = C3(0.3, 0.29, 0.28);
     for (let i = 0; i < n; i++) {
       const t = i / n, p = curve.getPointAt(t), d = curve.getTangentAt(t), a = Math.atan2(d.z, d.x);
       railB.add(new THREE.BoxGeometry(1.35, 0.04, 4.2), M4(p.x, 0.02, p.z, -a), ballast, 0);
@@ -692,7 +697,7 @@ export async function createTerrain(world) {
   }
 
   // ---------- center: badlands ----------
-  const strata = (x, y, z) => { const b = Math.sin(y * 1.9 + vnoise(x * 0.1, z * 0.1) * 2), n = vnoise(x * 0.2, z * 0.2 + y * 0.3); return [0.95 + 0.14 * b + 0.05 * n, 0.8 + 0.08 * b, 0.68 + 0.04 * b]; };
+  const strata = (x, y, z) => { const b = Math.sin(y * 1.9 + vnoise(x * 0.1, z * 0.1) * 2), n = vnoise(x * 0.2, z * 0.2 + y * 0.3); return [0.9 + 0.12 * b + 0.05 * n, 0.8 + 0.09 * b, 0.7 + 0.06 * b]; };
   for (let i = 0; i < 8; i++) {
     const r = 9 + R() * 7, p = place(4, r, 0.55, 600, 9); if (!p) continue;
     const h = 7 + R() * 7;
@@ -704,7 +709,7 @@ export async function createTerrain(world) {
   for (const [x, z, r, h] of [[-20, -205, 26, 22], [40, -200, 20, 18], [-15, 210, 24, 20], [55, 200, 18, 16]]) // OOB mesas N/S of the middle
     B[4].add(columnGeo((x + z) | 0, 14, 6, 0.22, 0.15), M4(x, -0.3, z, R() * 6, r, h, r * 0.8), strata, L.STRATA);
   // boulders everywhere (tinted per biome)
-  const boulderTint = [[0.7, 0.68, 0.66, L.CONC], [0.55, 0.5, 0.48, L.BASALT], [0.95, 0.75, 0.62, L.REDROCK], [1.1, 0.9, 0.7, L.REDROCK], [0.95, 0.85, 0.75, L.STRATA]];
+  const boulderTint = [[0.5, 0.45, 0.42, L.BURN], [0.55, 0.5, 0.48, L.BASALT], [0.8, 0.8, 0.78, L.STRATA], [1.0, 0.85, 0.7, L.REDROCK], [0.8, 0.74, 0.68, L.STRATA]];
   for (let i = 0; i < 70; i++) {
     const r = 1.4 + R() * 2.4, x = (R() - 0.5) * (MAP.w - 20), z = (R() - 0.5) * (MAP.h - 20);
     if (blockedBy(x, z, r, 5)) continue;
@@ -715,7 +720,7 @@ export async function createTerrain(world) {
   for (let i = 0; i < 140; i++) { // scrub
     const x = (R() - 0.5) * MAP.w, z = (R() - 0.5) * MAP.h, [b, w] = dominant(x, z);
     if (b !== 4 || blockedBy(x, z, 0.5, 0)) continue;
-    bushes.push({ x, z, s: 0.7 + R() * 0.9, h: 0.6 + R() * 0.6, y: 0.25, c: [0.36 + R() * 0.1, 0.38, 0.2], ry: R() * 6 });
+    bushes.push({ x, z, s: 0.7 + R() * 0.9, h: 0.6 + R() * 0.6, y: 0.25, c: [0.1 + R() * 0.04, 0.11, 0.05], ry: R() * 6 });
   }
 
   // ---------- splat + mask textures ----------
@@ -730,8 +735,8 @@ export async function createTerrain(world) {
     const x = (i + 0.5) / MW_ * MAP.w - HW, z = (j + 0.5) / MH_ * MAP.h - HH, k = (j * MW_ + i) * 4;
     const w = biomeRaw(x, z);
     const vari = fbm(x * 0.03 + 50, z * 0.03 - 20, 5, 4);
-    let lz = smoothstep(0.5, 0.68, fbm(x * 0.022 + 9, z * 0.022, 77, 3));
-    for (const o of lavaPts) lz = Math.max(lz, 1 - smoothstep(o.r + 2, o.r + 14, Math.hypot(x - o.x, z - o.z)));
+    let lz = smoothstep(0.56, 0.72, fbm(x * 0.022 + 9, z * 0.022, 77, 3)) * 0.8;
+    for (const o of lavaPts) lz = Math.max(lz, 1 - smoothstep(o.r, o.r + 10, Math.hypot(x - o.x, z - o.z)));
     let oil = 0;
     if (w[0] > 0.2) oil = w[0] * smoothstep(0.7, 0.8, fbm(x * 0.09 + 3, z * 0.09 + 3, 91, 3)) * 0.9;
     let rr = 0;
@@ -795,8 +800,8 @@ export async function createTerrain(world) {
   vec2 tP = vGW.xz * 0.35;
   float tN = tNoise(tP + vec2(uTime * 0.12, uTime * 0.07)) * 0.6 + tNoise(tP * 2.3 - vec2(uTime * 0.18, 0.0)) * 0.4;
   float tCr = smoothstep(0.55, 0.75, tN);
-  vec3 tHot = mix(vec3(1.0, 0.42, 0.05), vec3(1.0, 0.85, 0.35), smoothstep(0.2, 0.0, tN));
-  vec3 tC = mix(tHot * 1.25, vec3(0.16, 0.05, 0.03), tCr * 0.85);
+  vec3 tHot = mix(vec3(0.95, 0.22, 0.02), vec3(1.0, 0.62, 0.12), smoothstep(0.3, 0.05, tN));
+  vec3 tC = mix(tHot, vec3(0.09, 0.03, 0.02), tCr * 0.9);
   tC = mix(tC, vec3(0.1, 0.06, 0.05), smoothstep(0.7, 1.0, vEdge));
   diffuseColor.rgb = tC;`);
     fogPatch(sh, U);
@@ -823,7 +828,7 @@ export async function createTerrain(world) {
     const c = new THREE.ConeGeometry(0.48, 0.42, 7, 1).translate(0, 0.21 + 0.82, 0);
     return mergeSimple([{ g: a, m: new THREE.Matrix4() }, { g: b, m: new THREE.Matrix4() }, { g: c, m: new THREE.Matrix4() }]);
   })();
-  instanced(new THREE.CylinderGeometry(0.6, 1, 1, 5).translate(0, 0.5, 0), (() => { const m = vegMat('trunk'); m.color.setRGB(0.32, 0.22, 0.15); return m; })(), trees,
+  instanced(new THREE.CylinderGeometry(0.6, 1, 1, 5).translate(0, 0.5, 0), (() => { const m = vegMat('trunk'); m.color.setRGB(0.09, 0.055, 0.035); return m; })(), trees,
     (t, m) => m.compose(new THREE.Vector3(t.x, 0, t.z), new THREE.Quaternion(), new THREE.Vector3(t.s, t.h, t.s)), 'trunks');
   instanced(coneGeo, vegMat('cone'), cones, (t, m) => m.compose(new THREE.Vector3(t.x, 0, t.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, t.ry, 0)), new THREE.Vector3(t.s, t.h, t.s)), 'conifers');
   instanced(rockGeo(31, 1, 0.35), vegMat('bush'), bushes, (t, m) => m.compose(new THREE.Vector3(t.x, t.y, t.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, t.ry, 0)), new THREE.Vector3(t.s, t.h, t.s)), 'bushes');

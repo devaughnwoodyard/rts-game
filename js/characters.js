@@ -13,6 +13,10 @@ const SRC_HEIGHT = 188;                      // rig units (cm) at the helmet top
 export const WALK_SPEED = 1.19 * SOLDIER_HEIGHT / 1.86; // world u/s that the walk clip covers at timeScale 1
 export const TEAM_COLORS = { 0: 0x2f6fe0, 1: 0xc8322e };
 
+let template = null;
+const clips = {};
+const mats = new Map();
+
 // Faction looks. The GLB's vertex colours carry part classes (see tools/convert-soldier.html C table):
 // body (a=1,rgb=1), mid (a=1,rgb=.8), trim (a=1,rgb=.62), light (a=.55), visor (near black),
 // glow strips (cyan), gun-light (grey .42). Each faction maps the classes to colour/emissive.

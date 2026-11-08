@@ -1,5 +1,27 @@
 # Vanguard RTS — Module Contract (v1)
 
+## v2 ADDENDUM (supersedes conflicting v1 lines below)
+**Map:** 10× area. `world.map = { w: 512, h: 320 }`, origin at center. Four factions, free-for-all, player is team 0; teams 1–3 are AI.
+| team | faction | base (cc) | biome | color |
+|---|---|---|---|---|
+| 0 | Vanguard (cyberpunk) | (-200, 110) SW | URBAN: dark asphalt/concrete megacity ruins, cracked roads with glowing neon lane lines, overgrown-free, puddles, ruined towers as obstacles (NOT desert) | 0x2fb8ff |
+| 1 | Volcanic Clans | (200, -110) NE | volcanic: basalt, burned ground, cracked red earth, lava | 0xff5a12 |
+| 2 | Earth Cult (nature/sun/stone) | (-200, -110) NW | forest + rocky red mountainside: grass/forest ground, cliffs, trees | 0x5fd35f |
+| 3 | Storm Nomads (lightning/wind) | (200, 110) SE | open dunes: sand, wind-rippled | 0xe8d27a |
+ONLY the Storm Nomads quadrant is desert. Each quadrant must look like its faction's home. Center = neutral rocky badlands (grey-brown rock, gravel, some scrub — not sand) where the four biomes bleed into it, with 3 large crystal fields; each base has its own field ~25 units from its cc toward center. Barracks/factory offsets are the v1 offsets mirrored per quadrant (always on the side toward the map center).
+- `world.teams = { P:0, count:4 }`; `world.colors[0..3]`; `world.factions[t] = 'vanguard'|'volcanic'|'earth'|'storm'`.
+- `world.biomeAt(x,z)` → `{ volcanic, forest, dunes, badlands }` weights summing to 1 (engine owns; smooth blends ~40 units wide between regions). Engine renders terrain from this (splat).
+- Obstacles: mountains/cliffs (NW), lava pools (NE, impassable), dune ridges (SE), mesas (center/SW) — all as `world.obstacles` circles; bigger ones are several overlapping circles.
+- AI: every non-player team runs the same enemy AI (build, harvest, defense tiers, waves). Each AI targets the nearest enemy cc (player or AI). AIs fight each other.
+- Win when all other ccs are destroyed; lose when yours is.
+
+**Fog of war (new):**
+- Sim owns visibility: `world.fog = { enabled: true, cell: 4, cols, rows, explored: Uint8Array, visible: Uint8Array, version }` for team 0 only. Each 0.25 s recompute `visible` from team-0 units (sight: inf 18, veh 22, harvester 14, bld 26, turrets 30 (+40% w/ tall turrets), surveillance tier = +50%); `explored |= visible`. Bump `version` on change.
+- Enemy entities (team≠0) on cells not currently visible: `entity.hidden = true` when fog enabled (sim sets each recompute). Engine hides their meshes/health bars; minimap hides them; buildings once seen stay drawn on minimap as "last seen" ghosts. Player cannot target hidden units by tap.
+- `world.fog.enabled` toggled by HUD button "Fog: On/Off" (top bar) and key F; when off, everything is visible and `hidden` is false for all.
+- Engine renders fog as a ground-level overlay: unexplored = near-black (alpha 0.92), explored-not-visible = dark desaturated (alpha 0.55), visible = clear; texture from the fog arrays (DataTexture, linear filtered, updated on version change).
+
+
 Single-page web game. Plain ES modules, no bundler. Three.js r160 via import map from cdnjs.
 Phone-first, landscape. Must run on iOS Safari and Chrome Android.
 

@@ -158,6 +158,11 @@ function patchFx(m, key) {
       if (md > 0.5 && md < 1.5) vFx = 0.1 + 1.2 * step(0.7, fract(uTime * 0.8 + ph * 0.159));
       else if (md > 1.5 && md < 2.5) { float gl = fract(sin(floor(uTime * 12.0) * 1.7 + ph * 13.0) * 43758.5); vFx = gl > 0.9 ? 0.2 : 0.85 + 0.15 * sin(uTime * 37.0 + ph); }
       else if (md > 2.5 && md < 3.5) vFx = 0.6 + 0.4 * sin(uTime * 2.4 + ph);
+      else if (md > 5.5) { float fr = floor(uTime * 14.0 + ph * 3.0);
+        vec3 hp = floor(transformed * 4.0 + 0.5);
+        float h1 = fract(sin(dot(hp, vec3(12.9, 78.2, 37.7)) + fr * 7.13) * 43758.5), h2 = fract(sin(dot(hp, vec3(39.3, 11.1, 83.9)) + fr * 3.71) * 24634.6);
+        transformed.xz += (vec2(h1, h2) - 0.5) * 0.7;
+        vFx = fract(sin(fr * 1.37 + ph) * 9187.3) > 0.35 ? 1.6 : 0.0; }
       else if (md > 3.5) { float a = uTime * (md > 4.5 ? -0.9 : 0.6) + ph; float c = cos(a), s = sin(a); transformed.xz = mat2(c, -s, s, c) * transformed.xz; vFx = 0.85 + 0.15 * sin(uTime * 3.0 + ph); }`);
     sh.fragmentShader = 'varying float vFx;\n' + sh.fragmentShader.replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb *= vFx;');
   };
@@ -1584,37 +1589,48 @@ const THEMES = {
     decor: withPal(VOLC, (a) => a), variants: { wall: 3 }, gltf: { turret_cannon: withPal(VOLC, F_turret_cannon_gltf), artillery: withPal(VOLC, F_artillery_gltf) } },
   neutral: { mat: 'N', crystal: N_crystal, rock: N_rock, variants: { crystal: 4, rock: 4 } },
 };
-const TEAM_THEME = { 0: 'cyber', 1: 'volcanic', '-1': 'cyber' };
+const TEAM_THEME = { 0: 'cyber', 1: 'volcanic', 2: 'earth', 3: 'storm', '-1': 'cyber' };
 // Swap a team's look (call before spawning, or existing meshes keep the old look). Returns false for unknown themes.
 export function setTeamTheme(team, name) { if (!THEMES[name]) return false; TEAM_THEME[team] = name; return true; }
 export function registerTheme(name, set) { THEMES[name] = set; }
 const TPL = new Map();
 
-export function makeModel(THREE, kind, team) {
+const FACTION = { vanguard: 'cyber', volcanic: 'volcanic', earth: 'earth', storm: 'storm', cyber: 'cyber' };
+const themeOf = (team, faction) => (faction && FACTION[faction]) || TEAM_THEME[team] || 'cyber';
+export function makeModel(THREE, kind, team, faction) {
   T = T || THREE;
-  const tn = kind === 'crystal' || kind === 'rock' ? 'neutral' : (TEAM_THEME[team] || 'cyber'), th = THEMES[tn];
+  const tn = kind === 'crystal' || kind === 'rock' ? 'neutral' : themeOf(team, faction), th = THEMES[tn];
   let fn = th[kind]; if (typeof fn !== 'function' || kind === 'decor') return null;
   const useG = !!(CANNON && th.gltf?.[kind]); if (useG) fn = th.gltf[kind];
   const nv = th.variants?.[kind] || 1, v = nv > 1 ? (Math.random() * nv) | 0 : 0, key = `${tn}:${kind}:${v}:${useG ? 'g' : 'p'}`;
   if (!TPL.has(key)) TPL.set(key, fn(v));
   const o = TPL.get(key).clone();
   const tur = o.getObjectByName('turret'); if (tur) o.userData.turret = tur;
+  regAnim(o);
   return o;
 }
 
+const ANIM = [];
+function regAnim(o) { o.traverse(c => { if (c.name === 'spin' || c.name === 'bob') ANIM.push({ o: c, y0: c.position.y, ph: Math.random() * TAU, born: U.time.value }); }); }
 export function updateModels(dt, t) {
   U.time.value = Number.isFinite(t) ? t : U.time.value + (dt || 0);
   if (TEX.scan) TEX.scan.offset.y = -U.time.value * 0.35;
+  const tt = U.time.value;
+  for (let i = ANIM.length - 1; i >= 0; i--) {
+    const a = ANIM[i]; let r = a.o; while (r.parent) r = r.parent;
+    if (!r.isScene) { if (tt - a.born > 10 || tt < a.born) ANIM.splice(i, 1); continue; }
+    if (a.o.name === 'spin') a.o.rotation.x += (dt || 0.016) * 2.2; else a.o.position.y = a.y0 + Math.sin(tt * 1.1 + a.ph) * 0.35;
+  }
 }
 
 // Non-entity props around a base. Keeps clear of cc/barracks/factory, the front lane (toward map centre),
 // and the defense slots (turrets at R15-17 near the front, artillery at R11-12 at +-90deg and 180deg).
-export function decorateBase(THREE, scene, team, x, z) {
+export function decorateBase(THREE, scene, team, x, z, faction) {
   T = T || THREE;
-  const tn = TEAM_THEME[team] || 'cyber', th = THEMES[tn], volc = tn === 'volcanic';
+  const tn = themeOf(team, faction), th = THEMES[tn], volc = tn === 'volcanic';
   if (volc) { Object.assign(F, VOLC); MAT_OVERRIDE = 'X'; }
   try {
-  const theme = th.mat, k = new Kit(theme), r = rng(team === 1 ? 777 : 555);
+  const theme = th.mat, k = new Kit(theme), r = rng(555 + team * 222);
   const s = x < 0 ? 1 : -1;
   const blocks = [{ x, z, r: 9.5 }, { x: x + s * 10, z: z + s * 10, r: 6.5 }, { x: x + s * 10, z: z - s * 10, r: 6.5 }];
   const face = Math.atan2(-z, -x);
@@ -1633,7 +1649,7 @@ export function decorateBase(THREE, scene, team, x, z) {
   spots.forEach(([px, pz], i) => dec(k, px - x, pz - z, i, r, r() * TAU));
   const g = k.build('decor_' + theme); g.position.set(x, 0, z); g.userData.kind = 'decor';
   g.traverse(o => { if (o.isMesh) o.raycast = () => {}; });
-  scene?.add(g);
+  scene?.add(g); regAnim(g);
   return g;
   } finally { if (volc) { Object.assign(F, F0); MAT_OVERRIDE = null; } }
 }

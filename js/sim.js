@@ -34,6 +34,7 @@ export function createSim(world) {
   let hq = [null, null];         // command centers by team
   let staticObs = [];
   let lastCmd = null;
+  let staticVer = 0;
 
   const emit = (name, detail) => { try { bus?.dispatchEvent(new CustomEvent(name, { detail })); } catch (_) {} };
   const message = (text, ms = 2500) => { ui.message = text; emit('message', { text, ms }); };
@@ -54,7 +55,7 @@ export function createSim(world) {
       aggressive: false, autoTarget: false, scan: Math.random() * C.aggro.scanInterval,
       harvT: 0, field: null, idleT: 0, manual: false, stall: 0, stallRef: null,
     };
-    if (kind === 'crystal') e.amount = b.amount;
+    if (kind === 'crystal') { e.amount = b.amount; e.blockR = b.blockR ?? e.r; }
     if (opts) Object.assign(e, opts);
     if (e.hpMax < e.hp) e.hpMax = e.hp;
     try {
@@ -76,6 +77,7 @@ export function createSim(world) {
   function rebuildStaticObs() {
     // Buildings/crystals block movement. Walls/gates come via world.obstacles (defense.js).
     staticObs = ents.filter(e => !e.isUnit && e.state !== 'dead' && e.kind !== 'wall' && e.kind !== 'gate');
+    staticVer++;
   }
 
   // ---------------------------------------------------------------- setup
@@ -259,6 +261,9 @@ export function createSim(world) {
   const half = { w: (world.map?.w ?? 160) / 2 - 1, h: (world.map?.h ?? 100) / 2 - 1 };
 
   // Steer toward (tx,tz); returns remaining distance. `ignore` = entity not steered around (our goal).
+  // Ghosting (anti-softlock): a unit with no path may pass through its own team's buildings/walls and crystals,
+  // never through the other team's structures.
+  const ghostSkips = (e, owner) => e.ghost > 0 && (!owner || owner.team === e.team || owner.team === -1);
   function steer(e, tx, tz, dt, ignore) {
     let dx = tx - e.x, dz = tz - e.z;
     const dist = Math.hypot(dx, dz);
@@ -281,8 +286,8 @@ export function createSim(world) {
     };
     const obs = world.obstacles || [];
     // Team-tagged obstacles (gates) only block the other team; untagged block everyone.
-    for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (o.team == null || o.team !== e.team) avoid(o.x, o.z, o.r); }
-    for (let i = 0; i < staticObs.length; i++) { const o = staticObs[i]; if (o !== ignore) avoid(o.x, o.z, o.r); }
+    for (let i = 0; i < obs.length; i++) { const o = obs[i]; if ((o.team == null || o.team !== e.team) && !(o.owner && ghostSkips(e, o.owner))) avoid(o.x, o.z, o.r); }
+    for (let i = 0; i < staticObs.length; i++) { const o = staticObs[i]; if (o !== ignore && !ghostSkips(e, o)) avoid(o.x, o.z, o.blockR ?? o.r); }
     // Other units: avoid ones that aren't travelling with us (prevents head-on harvester deadlocks).
     for (let i = 0; i < unitsBuf.length; i++) {
       const o = unitsBuf[i];
@@ -306,6 +311,145 @@ export function createSim(world) {
     e._px = e.x; e._pz = e.z;
     turnTo(e, Math.atan2(-vz, vx), dt);
     return dist - step;
+  }
+
+  // ---------------------------------------------------------------- pathfinding
+  // 1-unit grid per team (gates only block the other team). Units steer straight when the line is clear,
+  // otherwise follow an A* path (string-pulled) so wall rings / moat gaps / crystal pockets don't trap them.
+  const GW = Math.ceil(world.map?.w ?? 160), GH = Math.ceil(world.map?.h ?? 100), GX0 = -GW / 2, GZ0 = -GH / 2;
+  const NAV_INFL = 1.0;
+  const grids = [null, null];
+  let gridSig = ['', ''], gridAt = [-99, -99], gridVer = [0, 0];
+  const cellOf = (x, z) => [Math.max(0, Math.min(GW - 1, Math.floor(x - GX0))), Math.max(0, Math.min(GH - 1, Math.floor(z - GZ0)))];
+  function gridFor(team) {
+    const obs = world.obstacles || [];
+    const sig = obs.length + '|' + staticVer;
+    if (grids[team] && gridSig[team] === sig && T - gridAt[team] < 2) return grids[team];
+    const g = grids[team] || (grids[team] = new Uint8Array(GW * GH));
+    g.fill(0);
+    const mark = (ox, oz, or) => {
+      const rr = or + NAV_INFL;
+      const x0 = Math.max(0, Math.floor(ox - rr - GX0)), x1 = Math.min(GW - 1, Math.floor(ox + rr - GX0));
+      const z0 = Math.max(0, Math.floor(oz - rr - GZ0)), z1 = Math.min(GH - 1, Math.floor(oz + rr - GZ0));
+      for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) {
+        const px = cx + GX0 + 0.5, pz = cz + GZ0 + 0.5;
+        if ((px - ox) ** 2 + (pz - oz) ** 2 <= rr * rr) g[cz * GW + cx] = 1;
+      }
+    };
+    for (const o of obs) if (o.team == null || o.team !== team) mark(o.x, o.z, o.r);
+    for (const o of staticObs) mark(o.x, o.z, o.blockR ?? o.r);
+    if (gridSig[team] !== sig) gridVer[team]++;
+    gridSig[team] = sig; gridAt[team] = T;
+    return g;
+  }
+  // Clear line on the grid? Cells within `skipR` of the end point are ignored (the goal may be a building).
+  function losClear(g, x0, z0, x1, z1, skipR) {
+    const L = Math.hypot(x1 - x0, z1 - z0), n = Math.ceil(L / 0.5);
+    for (let i = 1; i <= n; i++) {
+      const f = i / n, x = x0 + (x1 - x0) * f, z = z0 + (z1 - z0) * f;
+      if (skipR > 0 && (1 - f) * L < skipR) break;
+      const [cx, cz] = cellOf(x, z);
+      if (g[cz * GW + cx]) return false;
+    }
+    return true;
+  }
+  function nearestFree(g, cx, cz) {
+    if (!g[cz * GW + cx]) return [cx, cz];
+    for (let r = 1; r < 14; r++) {
+      let best = null, bd = Infinity;
+      for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const x = cx + dx, z = cz + dz;
+        if (x < 0 || z < 0 || x >= GW || z >= GH || g[z * GW + x]) continue;
+        const d = dx * dx + dz * dz;
+        if (d < bd) { bd = d; best = [x, z]; }
+      }
+      if (best) return best;
+    }
+    return null;
+  }
+  const gScore = new Float32Array(GW * GH), came = new Int32Array(GW * GH), stamp = new Uint32Array(GW * GH);
+  let stampN = 0;
+  const heapI = [], heapF = [];
+  function hPush(i, f) {
+    let k = heapI.length; heapI.push(i); heapF.push(f);
+    while (k > 0) { const p = (k - 1) >> 1; if (heapF[p] <= f) break; heapI[k] = heapI[p]; heapF[k] = heapF[p]; k = p; }
+    heapI[k] = i; heapF[k] = f;
+  }
+  function hPop() {
+    const top = heapI[0], li = heapI.pop(), lf = heapF.pop();
+    if (heapI.length) {
+      let k = 0; const n = heapI.length;
+      for (;;) { let c = 2 * k + 1; if (c >= n) break; if (c + 1 < n && heapF[c + 1] < heapF[c]) c++; if (heapF[c] >= lf) break; heapI[k] = heapI[c]; heapF[k] = heapF[c]; k = c; }
+      heapI[k] = li; heapF[k] = lf;
+    }
+    return top;
+  }
+  const NB = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2]];
+  function findPath(team, sx, sz, tx, tz) {
+    const g = gridFor(team);
+    const s0 = nearestFree(g, ...cellOf(sx, sz)), t0 = nearestFree(g, ...cellOf(tx, tz));
+    if (!s0 || !t0) return null;
+    const si = s0[1] * GW + s0[0], ti = t0[1] * GW + t0[0];
+    if (++stampN >= 0xfffffff0) { stamp.fill(0); stampN = 1; }
+    heapI.length = 0; heapF.length = 0;
+    const h = (i) => { const dx = Math.abs(i % GW - t0[0]), dz = Math.abs(((i / GW) | 0) - t0[1]); return Math.max(dx, dz) + 0.41421 * Math.min(dx, dz); };
+    stamp[si] = stampN; gScore[si] = 0; came[si] = -1; hPush(si, h(si));
+    let found = false, it = 0;
+    while (heapI.length && it++ < 30000) {
+      const cur = hPop();
+      if (cur === ti) { found = true; break; }
+      const cx = cur % GW, cz = (cur / GW) | 0, gc = gScore[cur];
+      for (const [dx, dz, c] of NB) {
+        const nx = cx + dx, nz = cz + dz;
+        if (nx < 0 || nz < 0 || nx >= GW || nz >= GH) continue;
+        const ni = nz * GW + nx;
+        if (g[ni]) continue;
+        if (dx && dz && (g[cz * GW + nx] || g[nz * GW + cx])) continue; // no corner cutting
+        const ng = gc + c;
+        if (stamp[ni] === stampN && gScore[ni] <= ng) continue;
+        stamp[ni] = stampN; gScore[ni] = ng; came[ni] = cur; hPush(ni, ng + h(ni));
+      }
+    }
+    if (!found) return null;
+    const cells = [];
+    for (let i = ti; i !== -1; i = came[i]) cells.push({ x: i % GW + GX0 + 0.5, z: ((i / GW) | 0) + GZ0 + 0.5 });
+    cells.reverse();
+    // string-pull
+    const out = []; let ax = sx, az = sz, k = 0;
+    while (k < cells.length) {
+      let j = cells.length - 1;
+      while (j > k && !losClear(g, ax, az, cells[j].x, cells[j].z, 0)) j--;
+      out.push(cells[j]); ax = cells[j].x; az = cells[j].z; k = j + 1;
+    }
+    return out;
+  }
+  // Move toward (tx,tz) via path if needed; returns remaining distance to (tx,tz).
+  function nav(e, tx, tz, dt, ignore) {
+    const g = gridFor(e.team);
+    let n = e._nav;
+    const skip = ignore ? ignore.r + NAV_INFL + 1 : 1.5;
+    const stale = !n || Math.abs(n.tx - tx) > 2 || Math.abs(n.tz - tz) > 2 || n.ver !== gridVer[e.team] ||
+      (e.stuckT > 0.6 && T - n.at > 1.5) || (n.pts && T - n.at > 4);
+    if (stale) {
+      n = e._nav = { tx, tz, ver: gridVer[e.team], at: T, pts: null };
+      if (!losClear(g, e.x, e.z, tx, tz, skip)) {
+        n.pts = findPath(e.team, e.x, e.z, tx, tz);
+        if (!n.pts && e.stuckT > 0.3) e.ghost = 2.5;   // boxed in (e.g. a wall closed a pocket around us)
+      }
+    }
+    const pts = n.pts;
+    if (pts && pts.length) {
+      // drop reached waypoints; shortcut to the goal once it's in sight
+      while (pts.length && Math.hypot(pts[0].x - e.x, pts[0].z - e.z) < 1.2) pts.shift();
+      if (pts.length > 1 && losClear(g, e.x, e.z, pts[1].x, pts[1].z, 0)) pts.shift();
+      if (!pts.length || losClear(g, e.x, e.z, tx, tz, skip)) n.pts = null;
+    }
+    if (n.pts && n.pts.length) {
+      steer(e, n.pts[0].x, n.pts[0].z, dt, ignore);
+      return Math.hypot(tx - e.x, tz - e.z);
+    }
+    return steer(e, tx, tz, dt, ignore);
   }
 
   function turnTo(e, ang, dt) {
@@ -333,8 +477,9 @@ export function createSim(world) {
     // push out of obstacles/buildings and clamp to map
     const obs = world.obstacles || [];
     for (const e of units) {
-      for (let i = 0; i < obs.length; i++) { const o = obs[i]; if (o.team == null || o.team !== e.team) pushOut(e, o.x, o.z, o.r); }
-      for (let i = 0; i < staticObs.length; i++) pushOut(e, staticObs[i].x, staticObs[i].z, staticObs[i].r);
+      if (e.ghost > 0) e.ghost -= lastDt;
+      for (let i = 0; i < obs.length; i++) { const o = obs[i]; if ((o.team == null || o.team !== e.team) && !(o.owner && ghostSkips(e, o.owner))) pushOut(e, o.x, o.z, o.r); }
+      for (let i = 0; i < staticObs.length; i++) { const o = staticObs[i]; if (!ghostSkips(e, o)) pushOut(e, o.x, o.z, o.blockR ?? o.r); }
       if (e.x > half.w) e.x = half.w; else if (e.x < -half.w) e.x = -half.w;
       if (e.z > half.h) e.z = half.h; else if (e.z < -half.h) e.z = -half.h;
     }
@@ -383,7 +528,7 @@ export function createSim(world) {
 
   function updateMover(e, dt) {
     const d = e.dest;
-    const rem = steer(e, d.x, d.z, dt, null);
+    const rem = nav(e, d.x, d.z, dt, null);
     // stall detection: crowded at destination
     e.stall += dt;
     if (e.stall > 1) {
@@ -433,7 +578,7 @@ export function createSim(world) {
       if (e.isUnit) turnTo(e, ang, dt); else e.rot = ang;
       if (e.cooldown <= 0) { e.cooldown = e.fireRate; fire(e, t); }
     } else if (e.isUnit) {
-      steer(e, t.x, t.z, dt, t);
+      nav(e, t.x, t.z, dt, t);
     }
     const tur = e.mesh?.userData?.turret;
     if (tur && tur.rotation) tur.rotation.y = ang - e.rot;
@@ -469,7 +614,7 @@ export function createSim(world) {
       const f = e.field;
       if (!f || f.state === 'dead' || !(f.amount > 0)) { e.field = null; e.state = 'idle'; e.idleT = 99; return; }
       const reach = f.r + e.r + 1.2;
-      if (Math.hypot(f.x - e.x, f.z - e.z) > reach) { steer(e, f.x, f.z, dt, f); e.harvT = 0; return; }
+      if (Math.hypot(f.x - e.x, f.z - e.z) > reach) { nav(e, f.x, f.z, dt, f); e.harvT = 0; return; }
       e.harvT += dt;
       if (e.harvT >= C.economy.gatherTime) {
         const take = Math.min(C.economy.harvesterCarry, f.amount);
@@ -480,7 +625,7 @@ export function createSim(world) {
       const cc = hq[e.team];
       if (!cc || cc.state === 'dead') { e.state = 'idle'; return; }
       const reach = cc.r + e.r + 1.5;
-      if (Math.hypot(cc.x - e.x, cc.z - e.z) > reach) { steer(e, cc.x, cc.z, dt, cc); e.harvT = 0; return; }
+      if (Math.hypot(cc.x - e.x, cc.z - e.z) > reach) { nav(e, cc.x, cc.z, dt, cc); e.harvT = 0; return; }
       e.harvT += dt;
       if (e.harvT >= C.economy.depositTime) {
         crystals[e.team] += e.carry; e.carry = 0; e.harvT = 0;
@@ -558,8 +703,9 @@ export function createSim(world) {
     writeUi();
   }
 
+  let lastDt = 0;
   function step(dt) {
-    T += dt;
+    T += dt; lastDt = dt;
     updateQueues(dt);
     enemyAI(dt);
 

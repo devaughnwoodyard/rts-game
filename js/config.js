@@ -20,7 +20,7 @@ export const CONFIG = {
     cc:       { hp: 8000, r: 8, cls: 'bld', produces: [] },
     barracks: { hp: 1800, r: 5, cls: 'bld', produces: ['warden', 'raider'] },
     factory:  { hp: 2200, r: 5, cls: 'bld', produces: ['tank', 'harvester'] },
-    crystal:  { hp: 1, r: 1.8, cls: 'neutral', amount: 2400 },
+    crystal:  { hp: 1, r: 1.8, blockR: 1.1, cls: 'neutral', amount: 2400 }, // blockR: movement footprint (smaller than visual)
   },
 
   // Default stats for defense-owned kinds (defense.js may override via spawn overrides).

@@ -1,0 +1,15 @@
+import { chromium } from 'playwright';
+import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+const root = process.argv[2], out = process.argv[3];
+const mime = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.glb':'model/gltf-binary','.gltf':'model/gltf+json' };
+const server = http.createServer((q,r)=>{let p=decodeURIComponent(q.url.split('?')[0]); if(p==='/')p='/index.html'; const f=path.join(root,p); if(!fs.existsSync(f)||fs.statSync(f).isDirectory()){r.writeHead(404);return r.end();} r.writeHead(200,{'Content-Type':mime[path.extname(f)]||'application/octet-stream'}); fs.createReadStream(f).pipe(r);});
+await new Promise(r=>server.listen(0,r));
+const b = await chromium.launch({ args:['--use-gl=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'] });
+const p = await (await b.newContext({ viewport:{width:844,height:390} })).newPage();
+await p.goto(`http://127.0.0.1:${server.address().port}/?q=low`); await p.waitForTimeout(20000);
+const info = await p.evaluate(()=>{ const w=window.world; const mine=w.entities.filter(e=>e.team===0&&e.cls!=='bld'); return { cam:w.camTarget, units: mine.map(e=>({k:e.kind,x:Math.round(e.x),z:Math.round(e.z),mesh:!!e.mesh,vis:e.mesh?.visible, kids:e.mesh?.children?.length})) }; });
+console.log(JSON.stringify(info));
+await p.screenshot({ path: out+'-start.png' });
+await p.evaluate(()=>{ const w=window.world; const u=w.entities.find(e=>e.team===0&&e.kind.includes('tank')); if(u){w.camTarget.x=u.x; w.camTarget.z=u.z;} });
+await p.waitForTimeout(6000); await p.screenshot({ path: out+'-units.png' });
+await b.close(); server.close();

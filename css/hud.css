@@ -127,3 +127,7 @@ html, body {
   #hud .v-bbtn { width: 86px; height: 56px; }
   .v-stats { gap: 10px; }
 }
+
+/* Integrator: crowded top bar on phones — keep labels on one line, tighten buttons */
+#hud .v-top button { white-space: nowrap; padding: 0 9px; font-size: 13px; }
+@media (max-width: 900px) { #hud .v-top button { padding: 0 7px; font-size: 12px; } }

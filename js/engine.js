@@ -711,8 +711,9 @@ export async function createEngine() {
 
   world.makeMesh = (kind, team = -1) => {
     let g = null;
-    if (kind === 'warden' && chars) {
-      try { g = makeSquad(team); } catch (err) { console.warn('[engine] squad build failed, primitive fallback:', err?.message); g = null; }
+    // Integrator: every faction's basic infantry renders as the animated soldier squad (roster kinds included).
+    if ((kind === 'warden' || /_(trooper|brute|acolyte|skirmisher|ranger|infantry)$/.test(kind)) && chars) {
+      try { g = makeSquad(team); g.scale.setScalar(1.5); /* integrator: readable next to vehicles on a phone */ } catch (err) { console.warn('[engine] squad build failed, primitive fallback:', err?.message); g = null; }
     }
     if (!g && models) {
       try { g = models.makeModel(THREE, kind, team, world.factions?.[team]) || null; } catch (err) { console.warn('[engine] makeModel failed', kind, err?.message); g = null; }
@@ -940,7 +941,9 @@ export async function createEngine() {
     } else if (gesture === 'pan') {
       pan(px, py, p.x, p.y);
     } else if (gesture === 'pending' && Math.hypot(p.x - pt.sx, p.y - pt.sy) >= 10) {
-      gesture = 'drag';
+      // Integrator (user request): a quick one-finger drag scrolls the map; press-and-hold (≥350ms) then drag = box select.
+      gesture = (performance.now() - pt.t >= 350) ? 'drag' : 'pan';
+      if (gesture === 'pan') pan(pt.sx, pt.sy, p.x, p.y);
     }
     if (gesture === 'drag') {
       const a = world.groundAt(pt.sx, pt.sy), b = world.groundAt(p.x, p.y);
@@ -1072,7 +1075,12 @@ export async function createEngine() {
   resize();
   world.setView('tactical');
   if (world.ground) { trackEnv(world.ground); world.ground.receiveShadow = true; }
-  if (models?.decorateBase) for (const [team, b] of BASES.entries()) {
+  // Integrator: base decor is placed at each team's real cc once the sim has spawned (main.js calls world.decorateBases()).
+  world.decorateBases = () => { if (models?.decorateBase) for (const cc of world.entities.filter(e => e.kind === 'cc' && e.team >= 0)) {
+    try { const d = models.decorateBase(THREE, scene, cc.team, cc.x, cc.z, world.factions?.[cc.team]); d?.traverse?.((o) => { if (o.isMesh && !o.material?.transparent) { o.castShadow = true; o.receiveShadow = true; } }); trackEnv(d); }
+    catch (err) { console.warn('[engine] decorateBase failed', err?.message); }
+  } };
+  if (false) for (const [team, b] of BASES.entries()) {
     try { const d = models.decorateBase(THREE, scene, team, b.x, b.z, world.factions?.[team]); d?.traverse?.((o) => { if (o.isMesh && !o.material?.transparent) { o.castShadow = true; o.receiveShadow = true; } }); trackEnv(d); }
     catch (err) { console.warn('[engine] decorateBase failed', err?.message); }
   }

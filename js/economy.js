@@ -53,10 +53,11 @@ export function createEconomy(world, sim, H) {
   // income ring: 60 one-second buckets per team per kind (realized income, i.e. what actually reached the bank)
   const inc = Array.from({ length: NT }, () => ({ primary: new Float32Array(60), secondary: new Float32Array(60) }));
   let lastSec = 0;
+  const earned = Array.from({ length: NT }, () => ({ primary: 0, secondary: 0 }));
   function add(team, kind, n, isIncome = true) {
     if (!res[team] || !(n > 0) || (kind !== 'primary' && kind !== 'secondary')) return;
     res[team][kind] += n;
-    if (isIncome) inc[team][kind][Math.floor(T()) % 60] += n;
+    if (isIncome) { inc[team][kind][Math.floor(T()) % 60] += n; earned[team][kind] += n; }
   }
   function tickIncome() {
     const s = Math.floor(T());
@@ -739,7 +740,7 @@ export function createEconomy(world, sim, H) {
   function aiReservePrimary(team) {
     let need = 0;
     if (plots.some(p => p.owner === team && !live(p.ext))) need += E.extractor.primary.cost;
-    if (supplyCap(team) - supplyUsed(team) <= 4 && supplyCap(team) < E.supply.max) need += E.costs.housing.primary;
+    if (supplyCap(team) - supplyUsed(team) <= 6 && supplyCap(team) < E.supply.max) need += E.costs.housing.primary;
     return need * (1.2 - pers(team).army);
   }
   // Secondary spending gate for AI planners (BUILDER calls this for defense/tech): keeps each personality's split.
@@ -748,9 +749,10 @@ export function createEconomy(world, sim, H) {
     if (!canAfford(team, c)) return false;
     const P = pers(team), s = aiSpent[team], b = P.budget;
     const total = s.expand + s.defense + s.tech;
-    if (res[team].secondary - c.secondary > 450 || total < 150) return true;
-    const share = (s[cat] || 0) + c.secondary;
-    return share / (total + c.secondary) <= (b[cat] ?? 0.3) + 0.12;
+    const left = res[team].secondary - c.secondary, bc = b[cat] ?? 0.3;
+    // within its budget share -> fine; over it -> only if enough stays banked for the other categories
+    if (total < 150 || ((s[cat] || 0) + c.secondary) / (total + c.secondary) <= bc + 0.12) return true;
+    return left >= 140 * (1 - bc);
   }
   function housingSpot(team) {
     const cc = H.hq[team]; if (!cc) return null;
@@ -774,9 +776,10 @@ export function createEconomy(world, sim, H) {
       if (canBuildExtractor(t, p).ok) { buildExtractor(t, p); break; }
     }
     // 2. housing when nearly capped
-    const capped = supplyCap(t) - supplyUsed(t) <= 4 && supplyCap(t) < E.supply.max;
-    const building = ents.some(e => e.team === t && e.kind === 'housing' && e.constructing && e.state !== 'dead');
-    if (capped && !building && canAfford(t, E.costs.housing)) { const s = housingSpot(t); if (s) build(t, 'housing', s.x, s.z); }
+    const free = supplyCap(t) - supplyUsed(t);
+    let pend = 0; for (const e of ents) if (e.team === t && e.kind === 'housing' && e.constructing && e.state !== 'dead') pend++;
+    const capped = free + pend * E.supply.housing <= 6 + Math.min(10, now / 60) && supplyCap(t) + pend * E.supply.housing < E.supply.max;
+    if (capped && pend < (r.primary > 450 ? 2 : 1) && canAfford(t, E.costs.housing)) { const s = housingSpot(t); if (s) build(t, 'housing', s.x, s.z); }
     // 3. expansion
     const target = Math.min(P.maxPlots, 2 + Math.floor(Math.max(0, now - 20) / 60 * P.expandPerMin + 0.5));
     const claimingNow = plots.some(p => p.claiming === t);
@@ -817,6 +820,7 @@ export function createEconomy(world, sim, H) {
     return {
       primary: res[team].primary, secondary: res[team].secondary,
       incPrimary: incomePerMin(team, 'primary'), incSecondary: incomePerMin(team, 'secondary'),
+      earnedPrimary: earned[team].primary, earnedSecondary: earned[team].secondary,
       supply: supplyUsed(team), supplyCap: supplyCap(team), crew: crewUsed(team),
       plots: plots.filter(p => p.owner === team).length, claiming: plots.filter(p => p.claiming === team).length,
       extractors: extractors.filter(x => x.team === team && live(x)).length,
@@ -825,8 +829,11 @@ export function createEconomy(world, sim, H) {
     };
   }
 
+  const currencyName = (team, which = 'secondary') => names(team)[which] || which;
+  function doPlotAction(ent, id, team = 0) { const a = plotActions(ent, team).find(x => x.id === id); return a?.run ? a.run() : { ok: false, reason: 'Unavailable' }; }
   const econ = {
-    res, canAfford, spend, add, cost, unitCost, normCost: norm,
+    res, earned, canAfford, spend, add, cost, unitCost, normCost: norm, currencyName, doPlotAction,
+    placeBuilding: (team, kind, x, z, opts) => build(team, kind, x, z, opts),
     plots, extractors, processors, plotActions, plotTitle, plotOf, claim, canClaim, buildExtractor, canBuildExtractor, adjacent, claimables,
     build, setAetherMode, aetherMode, assignHarvester,
     supplyCap, supplyUsed, crewUsed, requestCrew, releaseCrew, crewNeed,

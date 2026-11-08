@@ -48,6 +48,8 @@ export function applyScenario(world, sim) {
       const off = (i - (units.length - 1) / 2) * 5;
       try { sim.spawn(kind, t, fx + px * off, fz + pz * off); } catch (err) { console.warn('[scenario] spawn', kind, err.message); }
     });
+    // start the player's camera on their deployed army
+    if (t === 0 && world.camTarget) { world.camTarget.x = fx; world.camTarget.z = fz; }
     // two extra harvesters so the processor is clearly being fed
     const harv = units.find(k => /harvester/.test(k));
     if (harv) for (let i = 0; i < 2; i++) { try { sim.spawn(harv, t, cc.x + (i ? 6 : -6), cc.z + 6); } catch {} }

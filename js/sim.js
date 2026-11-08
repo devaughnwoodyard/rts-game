@@ -1054,17 +1054,20 @@ export function createSim(world) {
       const canBuy = (k) => { const c = econ.unitCost(k); return econ.canAfford(t, { primary: c.primary + keep, secondary: c.secondary }); };
       // harvesters (faction kind; cc builds them if the producing building is gone)
       const hk = harvKindFor(t);
-      const hb = [fac, bar, hq[t]].find(b => b && producesFor(b).includes(hk));
-      const harvs = counts[t].harv + (hb ? qOf(hb).filter(q => isHarvKind(q.kind)).length : 0);
-      const want = econ.aiWantHarvesters(t);
-      if (hb && harvs < want && qOf(hb).length < P.enemyMaxQueued && econ.canAfford(t, econ.unitCost(hk))) enqueue(hb, hk);
+      // harvesters first: shortest queue among the buildings that make them (the cc always can)
+      const hbs = [fac, bar, hq[t]].filter(b => b && producesFor(b).includes(hk));
+      let harvs = counts[t].harv;
+      for (const b of hbs) harvs += qOf(b).filter(q => isHarvKind(q.kind)).length;
+      const hb = hbs.sort((a, b) => qOf(a).length - qOf(b).length)[0];
+      const needHarv = harvs < econ.aiWantHarvesters(t);
+      if (hb && needHarv && qOf(hb).length < P.enemyMaxQueued && econ.canAfford(t, econ.unitCost(hk))) enqueue(hb, hk);
       // army: weighted pick from this faction's roster, skewed toward counters of the current rival's army
       const rival = nearestEnemyHQ(t);
       const opts = aiOptions(t, [bar, fac]);
       if (opts.length) {
         const w = opts.map(o => aiWeight(o.kind, rival ? counts[rival.team] : null));
         const sum = w.reduce((x, y) => x + y, 0);
-        for (let tries = 0; tries < 2; tries++) {
+        for (let tries = 0; tries < (needHarv ? 1 : 2); tries++) {
           let r = Math.random() * sum, pick = opts[0];
           for (let i = 0; i < opts.length; i++) { if ((r -= w[i]) <= 0) { pick = opts[i]; break; } }
           const u = unitDef(pick.kind);

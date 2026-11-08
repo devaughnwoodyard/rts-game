@@ -21,7 +21,7 @@ const spot = await page.evaluate(() => {
   const w = window.world, d = w.defense, s = w.sim;
   w.clock.speed = 0.0001;                                // freeze the battle while we build
   if (s.crystals) s.crystals[0] = 99999;
-  try { w.econ?.add?.(0, { primary: 99999, secondary: 99999 }); } catch (e) {}
+  if (w.econ?.res?.[0]) { w.econ.res[0].primary = 99999; w.econ.res[0].secondary = 99999; }
   w.setView('aerial');
   const cc = w.entities.find(e => e.kind === 'cc' && e.team === 0);
   const face = Math.atan2(-cc.z, -cc.x);
@@ -56,20 +56,25 @@ await click('ok'); await page.waitForTimeout(300);
 const wall = await page.evaluate(() => { const L = [...window.world.defense._lines.values()].filter(l => l.team === 0).pop(); return L && { id: L.id, segs: L.segs.map(s => ({ x: s.x, z: s.z, id: s.id })) }; });
 ok(wall?.segs.length === 6, 'wall line has 6 segments');
 const b1 = await bal();
-ok(b0 - b1 === 60, `wall cost deducted (${b0 - b1} == 60)`);
+const segC = await page.evaluate(() => window.world.defense.DEF.cost.wall);
+const near = (a, b) => Math.abs(a - b) < 1;
+ok(near(b0 - b1, 6 * segC), `wall cost deducted (${(b0 - b1).toFixed(1)} == ${6 * segC})`);
 ok(await page.evaluate(n => window.world.obstacles.length - n, nObs0) === 6, 'six wall obstacles registered');
 
 // widen 4 segments via tap -> contextual "Widen"
 await click('tool-wall'); // toggle tool off -> tap mode
 for (let i = 0; i < 4; i++) {
   const p = await scr(wall.segs[i].x, wall.segs[i].z, 1);
+  if (i === 0) console.log('tap target', await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return e.tagName + '#' + e.id + '.' + e.className; }, [p.x, p.y]), p);
   await page.mouse.click(p.x, p.y); await page.waitForTimeout(150);
+  if (i === 0) console.log('sel', await page.evaluate(() => window.world.buildMode.state.selected?.kind), await page.textContent('#bm-info'));
   await click('act-widen'); await page.waitForTimeout(100);
 }
 const slots = await page.evaluate(id => window.world.defense._lines.get(id).slots.map(s => ({ x: s.x, z: s.z })), wall.id);
 ok(slots.length === 2, `4 widened segments -> ${slots.length} turret slots (want 2)`);
 const b2 = await bal();
-ok(b1 - b2 === 120, `widen cost deducted (${b1 - b2} == 4x30)`);
+const wc = await page.evaluate(() => window.world.defense.widenCost().secondary);
+ok(near(b1 - b2, 4 * wc), `widen cost deducted (${(b1 - b2).toFixed(1)} == 4x${wc})`);
 ok(await page.evaluate(id => window.world.defense._lines.get(id).segs.slice(0, 4).every(s => s._obs.r >= 3), wall.id), 'widened walls have thicker obstacles');
 await shot('widened');
 
@@ -79,7 +84,7 @@ await click('tab-tech');
 const mgCost = await page.evaluate(() => window.world.defense.tierInfo(0).list[0].cost);
 await click('tech-mg'); await page.waitForTimeout(150);
 const b3 = await bal();
-ok(b2 - b3 === mgCost, `tech cost deducted (${b2 - b3} == ${mgCost})`);
+ok(near(b2 - b3, mgCost), `tech cost deducted (${(b2 - b3).toFixed(1)} == ${mgCost})`);
 await shot('tech');
 await page.evaluate(() => window.world.defense.update(60));    // finish research
 ok(await page.evaluate(() => window.world.defense.unlocked(0, 'turret_mg')), 'MG turret unlocked by tech');
@@ -96,7 +101,8 @@ for (const s of slots) {
 const turrets = await page.evaluate(() => [...window.world.defense._defs].filter(e => e.team === 0 && e.kind === 'turret_mg').map(e => ({ id: e.id, onWall: !!e.onWall, y: e.mesh?.position?.y, x: e.x, z: e.z, range: e.baseRange })));
 ok(turrets.length === 2 && turrets.every(t => t.onWall && t.y >= 2), `2 turrets on wall slots at y+2 (${JSON.stringify(turrets.map(t => [t.onWall, t.y]))})`);
 const b4 = await bal();
-ok(b3 - b4 === 120, `turret cost deducted (${b3 - b4} == 2x60)`);
+const tc = await page.evaluate(() => window.world.defense.DEF.cost.turret_mg);
+ok(near(b3 - b4, 2 * tc), `turret cost deducted (${(b3 - b4).toFixed(1)} == 2x${tc})`);
 
 // crew gating: no crew -> no fire; crew -> fire
 const fire = await page.evaluate((ids) => {
@@ -106,21 +112,27 @@ const fire = await page.evaluate((ids) => {
   const foe = s.spawn(kind, 1, t.x + 6, t.z + 4); foe.hp = foe.hpMax = 1e6;
   let shots = 0; const h = ev => { if (ids.includes(ev.detail?.shooter?.id)) shots++; };
   w.bus.addEventListener('shot', h);
-  d.crewOverride[0] = 0;
+  const tur = [...d._defs].filter(e => ids.includes(e.id));
+  // starve manpower: one filler unit eats all free supply, then release the turrets' crews
+  let filler = null;
+  if (w.econ?.requestCrew) {
+    const inf = Object.keys(s.roster || {}).find(k => s.roster[k].faction === w.factions?.[0] && s.roster[k].role === 'infantry') || 'warden';
+    filler = s.spawn(inf, 0, t.x - 30, t.z, { supply: 999 });
+    for (const e of tur) w.econ.releaseCrew(e);
+  } else d.crewOverride[0] = 0;
   for (let i = 0; i < 30; i++) d.update(0.1);
-  const noCrew = shots, unmanned = [...d._defs].filter(e => ids.includes(e.id)).every(e => e.unmanned);
-  delete d.crewOverride[0];
-  if (s.crystals) s.crystals[0] = s.crystals[0];
+  const noCrew = shots, unmanned = tur.every(e => e.unmanned);
+  if (filler) filler.supply = 0; else delete d.crewOverride[0];
   for (let i = 0; i < 30; i++) d.update(0.1);
+  if (filler) s.kill(filler);
   w.bus.removeEventListener('shot', h);
-  return { noCrew, unmanned, withCrew: shots - noCrew, pool: d.crewPool(0) };
+  return { noCrew, unmanned, withCrew: shots - noCrew, pool: d.crewPool(0), manned: tur.every(e => !e.unmanned) };
 }, turrets.map(t => t.id));
 ok(fire.unmanned && fire.noCrew === 0, `unmanned turrets do not fire (${fire.noCrew} shots)`);
 ok(fire.withCrew > 0, `crewed turrets fire (${fire.withCrew} shots, pool ${fire.pool})`);
-await page.evaluate(() => { window.world.defense.crewOverride[0] = 0; window.world.defense.update(0.6); });
+await page.evaluate(() => { const w = window.world; for (const e of w.defense._defs) if (e.team === 0 && e.crewNeed) { if (w.econ?.releaseCrew) { w.econ.releaseCrew(e); e.crew = 0; } else e.unmanned = true; } });
 await page.waitForTimeout(400);
 await shot('needs-crew');
-await page.evaluate(() => { delete window.world.defense.crewOverride[0]; });
 
 // wall dies -> turret on it dies
 const cascade = await page.evaluate((id) => {

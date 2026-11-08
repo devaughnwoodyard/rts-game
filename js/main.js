@@ -22,6 +22,7 @@ const hud     = createHud     ? createHud(world, sim)     : null;
 // Integrator: "10 minutes in" start (default; ?start=fresh for a normal start).
 const applyScenario = await optional('./scenario.js', 'applyScenario');
 try { applyScenario?.(world, sim); } catch (e) { console.warn('[main] scenario failed:', e.message); }
+try { world.decorateBases?.(); } catch (e) { console.warn('[main] decorateBases failed:', e.message); }
 
 world.onFrame((dt) => {
   sim?.update?.(dt);

@@ -48,6 +48,7 @@ export function createBuildMode(world, defense) {
   const style = el('style'); style.textContent = CSS; document.head.append(style);
   const msg = (text, ms = 1600) => { try { world.bus?.dispatchEvent(new CustomEvent('message', { detail: { text, ms } })); } catch (e) { /* */ } };
   const alive = e => e && e.hp > 0 && e.state !== 'dead';
+  const isPlotLike = e => !!(e && (e.plot || /plot|extractor/.test(e.kind || '') || (e.processor && e.team === 0) || world.econ?.plotOf?.(e)));
 
   // ---------- DOM ----------
   const btn = el('button', 'bm-btn', 'Build');
@@ -159,13 +160,14 @@ export function createBuildMode(world, defense) {
     back.onclick = () => { S.sel = null; render(true); };
     row.append(back);
     if (!e || !alive(e)) { S.sel = null; return render(true); }
-    const name = e.kind === 'wall' ? `Wall (${d.grades[(e.grade || 1) - 1]?.name}${e.widened ? ', wide' : ''})` : e.kind === 'gate' ? 'Gate' : e.plot || /plot/.test(e.kind) ? 'Plot' : (d.turretKinds(P).find(t => t.kind === e.kind)?.name || e.kind);
-    row.append(el('button', 'tab', `<span class="n">${name}</span><span class="c">${Math.ceil(e.hp)}/${Math.ceil(e.hpMax)}${e.crew ? ` · crew ${e.crew}${e.unmanned ? ' ⚠' : ''}` : ''}</span>`)).disabled = true;
-    if (e.plot || /plot/.test(e.kind)) {
+    let plotName = ''; try { plotName = isPlotLike(e) ? (world.econ?.plotTitle?.(e, P) || 'Plot') : ''; } catch (err) { plotName = 'Plot'; }
+    const name = e.kind === 'wall' ? `Wall (${d.grades[(e.grade || 1) - 1]?.name}${e.widened ? ', wide' : ''})` : e.kind === 'gate' ? 'Gate' : plotName || (d.turretKinds(P).find(t => t.kind === e.kind)?.name || e.kind);
+    row.append(el('button', 'tab', `<span class="n">${name}</span><span class="c">${Math.ceil(e.hp)}/${Math.ceil(e.hpMax)}${e.crewNeed ? ` · crew ${e.crewNeed}${e.unmanned ? ' ⚠ unmanned' : ''}` : ''}</span>`)).disabled = true;
+    if (isPlotLike(e) && !d.isDefense(e)) {
       let acts = [];
-      try { acts = world.econ?.plotActions?.(e) || []; } catch (err) { acts = []; }
+      try { acts = world.econ?.plotActions?.(e, P) || []; } catch (err) { acts = []; }
       if (!acts.length) row.append(el('button', '', '<span class="n">No actions</span>')).disabled = true;
-      acts.forEach((a, i) => act(a.label || a.name || a.id, a.cost != null ? (typeof a.cost === 'object' ? Object.entries(a.cost).filter(([, v]) => v).map(([k, v]) => `${v} ${k === 'primary' ? pri() : sec()}`).join(' ') : a.cost) : null,
+      acts.forEach((a, i) => act(a.label || a.name || a.id, a.costText || a.reason || (a.cost != null && typeof a.cost === 'object' ? Object.entries(a.cost).filter(([, v]) => v).map(([k, v]) => `${v} ${k === 'primary' ? pri() : sec()}`).join(' ') : a.cost ?? null),
         () => { const fn = a.run || a.do || a.action; return typeof fn === 'function' ? fn.call(a) : world.econ?.doPlotAction?.(e, a.id); }, 'plot-' + (a.id || i), a.enabled !== false));
       return;
     }
@@ -259,7 +261,7 @@ export function createBuildMode(world, defense) {
       const p = d.planBuilding(P, S.tool, x, z); p.bld = true;
       bldGhost.visible = true; bldGhost.material = p.ok ? matOk : matBad; bldGhost.position.set(p.x, 1.5, p.z);
       S.pending = p;
-      setInfo(`${S.tool === 'housing' ? 'Housing' : 'Processor'} · ${p.cost.primary} ${pri()}${p.ok ? '' : ' · ' + p.reason}`, !p.ok);
+      setInfo(`${S.tool === 'housing' ? 'Housing' : 'Processor'} · ${p.cost.primary} ${pri()}${p.cost.secondary ? ` + ${p.cost.secondary} ${sec()}` : ''}${p.ok ? '' : ' · ' + p.reason}`, !p.ok);
     } else {
       const p = d.planTurret(P, S.tool, x, z);
       const y = p.slot ? d.DEF.wallTop : 0;
@@ -277,8 +279,8 @@ export function createBuildMode(world, defense) {
   function pickAt(gp) {
     const d = D(); let best = null, bd = Infinity;
     for (const e of world.entities) {
-      if (!alive(e) && !(e.plot)) continue;
-      const isPlot = e.plot || /plot/.test(e.kind || '');
+      if (!alive(e) && !e.plot && e.kind !== 'plot') continue;
+      const isPlot = isPlotLike(e) && !d.isDefense(e);
       if (!isPlot && !(e.team === P && d.isDefense(e))) continue;
       const r = e.kind === 'wall' ? (e.widened ? 2.6 : 2.1) : isPlot ? (e.r || 4) : (e.r || 1.5) + 0.8;
       const dd = Math.hypot(e.x - gp.x, e.z - gp.z) - r;
@@ -365,11 +367,11 @@ export function createBuildMode(world, defense) {
     // "Needs crew" labels over unmanned player defenses
     let n = 0;
     for (const e of d._defs) {
-      if (e.team !== P || !e.crew || !e.unmanned || !alive(e)) continue;
+      if (e.team !== P || !e.crewNeed || !e.unmanned || !alive(e)) continue;
       const p = world.project(e.x, (e.yOff || 0) + 3.4, e.z);
       if (!p.visible || p.x < -40 || p.y < -20 || p.x > innerWidth + 40 || p.y > innerHeight + 20) continue;
       let L = labelPool[n]; if (!L) { L = el('div'); labels.append(L); labelPool.push(L); }
-      L.style.display = ''; L.textContent = `Needs crew (${e.crew})`;
+      L.style.display = ''; L.textContent = `Needs crew (${e.crewNeed})`;
       L.style.left = p.x.toFixed(0) + 'px'; L.style.top = p.y.toFixed(0) + 'px';
       if (++n >= 24) break;
     }
@@ -391,7 +393,9 @@ export function createBuildMode(world, defense) {
     if (tick > 0.25) { tick = 0; render(false); if (S.pending && !S.stroke) { const p = S.pending; if (S.tool === 'wall') previewWall(p.x0, p.z0, p.x1, p.z1); else if (S.tool) previewPlace(p.x, p.z); } }
   }
 
-  const api = { update, open, close, confirm, setTool, select: e => { S.sel = e; render(true); }, state: bm, previewWall, previewPlace };
-  world.buildMode = api;
+  const api = { update, open, close, confirm, setTool, select: e => { S.sel = e; render(true); }, state: bm, previewWall, previewPlace,
+    // hud.js delegates plot taps here (ECON contract): open build mode with the plot's contextual actions
+    openPlotSheet: (e) => { if (!S.open) open(); S.sel = e; S.tab = 'build'; render(true); } };
+  world.buildMode = world.buildmode = api;
   return api;
 }

@@ -6,9 +6,9 @@
 import * as THREE from 'three';
 
 const VIEWS = {
-  aerial:   { zoom: 36, min: 16, max: 56 },             // ortho half-height
-  tactical: { pitch: 68, fov: 50, zoom: 70, min: 35, max: 150 },
-  low:      { pitch: 40, fov: 55, zoom: 48, min: 22, max: 90 },
+  aerial:   { zoom: 34, min: 16, max: 48 },             // ortho half-height
+  tactical: { pitch: 68, fov: 50, zoom: 44, min: 24, max: 105 },  // zoom = camera distance
+  low:      { pitch: 40, fov: 55, zoom: 34, min: 18, max: 70 },
 };
 const BASES = [{ x: -55, z: 25 }, { x: 55, z: -25 }];
 
@@ -23,11 +23,11 @@ export async function createEngine() {
   const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
   renderer.shadowMap.enabled = false;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-  renderer.setClearColor(0x2a1e15);
+  renderer.setClearColor(0x3a3029);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x9c6a3e);
-  scene.fog = new THREE.Fog(0x9c6a3e, 200, 500);
+  scene.background = new THREE.Color(0x4a3e34);
+  scene.fog = new THREE.Fog(0x4a3e34, 220, 520);
 
   const hemi = new THREE.HemisphereLight(0xfff0d8, 0x6b4a2b, 1.1);
   const sun = new THREE.DirectionalLight(0xfff2e0, 1.7);
@@ -48,7 +48,7 @@ export async function createEngine() {
           queues: { barracks: [], factory: [] }, defenseTier: 0, enemyTier: 0,
           message: null, gameOver: null },
     lights: { hemi, sun },
-    camTarget: { x: BASES[0].x, z: BASES[0].z },
+    camTarget: { x: BASES[0].x + 19, z: BASES[0].z - 4 }, // base sits left-center of the opening view
     view: 'tactical',
     views: VIEWS,
   };
@@ -63,31 +63,39 @@ export async function createEngine() {
   world.camera = cams.tactical;
   let W = 1, H = 1, dpr = 1;
 
-  function clampTarget() {
-    const t = world.camTarget, hw = world.map.w / 2, hh = world.map.h / 2;
-    // keep most of the screen over the map: allow up to ~55% of the half-view off-map
-    const v = VIEWS[world.view], a = W / H;
-    const vh = world.view === 'aerial' ? v.zoom : v.zoom * Math.tan(THREE.MathUtils.degToRad(v.fov / 2));
-    const mx = Math.min(hw, vh * a * 0.45), mz = Math.min(hh, vh * 0.45);
-    t.x = Math.max(-hw + mx, Math.min(hw - mx, t.x));
-    t.z = Math.max(-hh + mz, Math.min(hh - mz, t.z));
-  }
-  function updateCamera() {
-    clampTarget();
-    const t = world.camTarget, v = VIEWS[world.view], cam = cams[world.view];
+  // Keep the view mostly over the map: at most OFF of the visible ground span may hang past an edge.
+  // Extents are measured from the real camera (perspective views see a trapezoid), translation-invariant.
+  const OFF = 0.3;
+  function placeCamera(cam, v, t) {
     if (world.view === 'aerial') {
       const a = W / H;
       cam.left = -v.zoom * a; cam.right = v.zoom * a; cam.top = v.zoom; cam.bottom = -v.zoom;
       cam.position.set(t.x, 300, t.z);
-      cam.lookAt(t.x, 0, t.z);
     } else {
       const p = THREE.MathUtils.degToRad(v.pitch);
       cam.aspect = W / H;
       cam.position.set(t.x, Math.sin(p) * v.zoom, t.z + Math.cos(p) * v.zoom);
-      cam.lookAt(t.x, 0, t.z);
     }
+    cam.lookAt(t.x, 0, t.z);
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();
+  }
+  function clampTarget(cam, v) {
+    const t = world.camTarget, hw = world.map.w / 2, hh = world.map.h / 2;
+    placeCamera(cam, v, t);
+    const L = world.groundAt(0, H * 0.5), R = world.groundAt(W, H * 0.5);
+    const T = world.groundAt(W * 0.5, 0) || world.groundAt(W * 0.5, H * 0.3), B = world.groundAt(W * 0.5, H);
+    if (!L || !R || !T || !B) return;
+    const eL = t.x - L.x, eR = R.x - t.x, eT = t.z - T.z, eB = B.z - t.z;
+    const clamp1 = (c, lo, hi) => (lo > hi ? (lo + hi) / 2 : Math.max(lo, Math.min(hi, c)));
+    const sx = (eL + eR) * OFF, sz = (eT + eB) * OFF;
+    t.x = clamp1(t.x, -hw + eL - sx, hw - eR + sx);
+    t.z = clamp1(t.z, -hh + eT - sz, hh - eB + sz);
+  }
+  function updateCamera() {
+    const v = VIEWS[world.view], cam = cams[world.view];
+    clampTarget(cam, v);
+    placeCamera(cam, v, world.camTarget);
   }
   world.setView = (name) => {
     if (!cams[name]) return;
@@ -172,30 +180,56 @@ export async function createEngine() {
     }
     return c;
   }
-  const groundTex = new THREE.CanvasTexture(groundCanvas());
+  // Ground: one plane 3x the map, same texture everywhere; a shader patch darkens + desaturates
+  // everything outside the playable rect so the edge reads as "out of bounds", not a cliff.
+  const EXT = 3, TILE = { x: 6, z: 4 }; // texture repeats across the playable map
   function prepTex(t) {
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(8, 5);
-    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(TILE.x * EXT, TILE.z * EXT);
+    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+    t.needsUpdate = true;
     return t;
   }
-  prepTex(groundTex);
+  const groundTex = prepTex(new THREE.CanvasTexture(groundCanvas()));
   const groundMat = new THREE.MeshLambertMaterial({ map: groundTex });
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(world.map.w, world.map.h), groundMat);
+  groundMat.onBeforeCompile = (sh) => {
+    sh.uniforms.uMapHalf = { value: new THREE.Vector2(world.map.w / 2, world.map.h / 2) };
+    sh.vertexShader = 'varying vec3 vGW;\n' + sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\n  vGW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    sh.fragmentShader = 'varying vec3 vGW;\nuniform vec2 uMapHalf;\n' + sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>
+  {
+    vec2 q = max(abs(vGW.xz) - uMapHalf, 0.0);
+    float d = length(q);
+    float k = smoothstep(0.0, 14.0, d) * 0.55 + smoothstep(14.0, 90.0, d) * 0.25;
+    float lum = dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114));
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(lum) * vec3(0.92, 0.88, 0.84), k * 0.9) * (1.0 - k * 0.75);
+    float rim = (1.0 - smoothstep(0.0, 1.6, d)) * step(0.001, d);
+    diffuseColor.rgb *= 1.0 - rim * 0.25;
+  }`);
+  };
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(world.map.w * EXT, world.map.h * EXT), groundMat);
   ground.rotation.x = -Math.PI / 2; ground.name = 'ground';
   scene.add(ground);
-  const outerTex = groundTex.clone(); outerTex.repeat.set(45, 45); outerTex.needsUpdate = true;
-  const outer = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), new THREE.MeshLambertMaterial({ map: outerTex, color: 0x9a8070 }));
-  outer.rotation.x = -Math.PI / 2; outer.position.y = -0.05; scene.add(outer);
-  { // map border
-    const bm = new THREE.MeshBasicMaterial({ color: 0x4a2e18, transparent: true, opacity: 0.55 }), w = world.map.w, h = world.map.h, th = 0.8;
-    for (const [bw, bd, x, z] of [[w + th * 2, th, 0, -h / 2 - th / 2], [w + th * 2, th, 0, h / 2 + th / 2], [th, h, -w / 2 - th / 2, 0], [th, h, w / 2 + th / 2, 0]]) {
-      const b = new THREE.Mesh(new THREE.PlaneGeometry(bw, bd), bm); b.rotation.x = -Math.PI / 2; b.position.set(x, 0.03, z); scene.add(b);
+  { // playable boundary: thin dark dashed rectangle on the ground
+    const w = world.map.w, h = world.map.h, th = 0.45, dash = 3, gap = 2.2, pos = [];
+    const quad = (x0, z0, x1, z1) => pos.push(x0, 0, z0, x0, 0, z1, x1, 0, z1, x0, 0, z0, x1, 0, z1, x1, 0, z0);
+    for (const [ax, az, bx, bz] of [[-w / 2, -h / 2, w / 2, -h / 2], [w / 2, -h / 2, w / 2, h / 2], [w / 2, h / 2, -w / 2, h / 2], [-w / 2, h / 2, -w / 2, -h / 2]]) {
+      const len = Math.hypot(bx - ax, bz - az), ux = (bx - ax) / len, uz = (bz - az) / len;
+      for (let s = 0; s < len; s += dash + gap) {
+        const e = Math.min(len, s + dash);
+        const x0 = ax + ux * s, z0 = az + uz * s, x1 = ax + ux * e, z1 = az + uz * e;
+        if (ux) quad(Math.min(x0, x1), z0 - th / 2, Math.max(x0, x1), z0 + th / 2);
+        else quad(x0 - th / 2, Math.min(z0, z1), x0 + th / 2, Math.max(z0, z1));
+      }
     }
+    const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const border = new THREE.Mesh(bg, new THREE.MeshBasicMaterial({ color: 0x24180f, transparent: true, opacity: 0.6, side: THREE.DoubleSide, depthWrite: false }));
+    border.position.y = 0.04; border.renderOrder = 1; border.name = 'mapBorder'; scene.add(border);
   }
   world.ground = ground;
   world.setGroundTexture = (url) => new THREE.TextureLoader().load(url, (t) => {
     prepTex(t); groundMat.map = t; groundMat.needsUpdate = true;
-  });
+  }, undefined, () => console.warn('[engine] ground texture failed to load, keeping procedural:', url));
+  world.setGroundTexture('assets/ground.jpg');
 
   // ---------- Obstacles ----------
   const rockMat = new THREE.MeshLambertMaterial({ color: 0x8a8580, flatShading: true });

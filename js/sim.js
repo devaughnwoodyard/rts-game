@@ -33,6 +33,7 @@ export function createSim(world) {
   let pendingDead = [];
   let hq = [null, null];         // command centers by team
   let staticObs = [];
+  let lastCmd = null;
 
   const emit = (name, detail) => { try { bus?.dispatchEvent(new CustomEvent(name, { detail })); } catch (_) {} };
   const message = (text, ms = 2500) => { ui.message = text; emit('message', { text, ms }); };
@@ -133,7 +134,7 @@ export function createSim(world) {
     if (!allowed || !allowed.includes(kind)) return fail(`${building.kind} can't build ${kind}`);
     const team = building.team, u = C.units[kind];
     let q = queues.get(building.id);
-    if (!q) { q = []; queues.set(building.id, q); ui.queues[building.id] = q; }
+    if (!q) { q = []; queues.set(building.id, q); }
     if (q.length >= C.queueMax) return fail('Queue full');
     if (supplyUsed(team) + u.supply > C.supplyCap) return fail('Supply cap reached');
     if (!spendCrystals(team, u.cost)) return fail('Not enough crystals');
@@ -193,7 +194,7 @@ export function createSim(world) {
       if (e.mesh) world.scene?.remove?.(e.mesh);
       world.input?.selected?.delete?.(e);
       if (!e.isUnit) structural = true;
-      if (queues.has(e.id)) { queues.get(e.id).length = 0; queues.delete(e.id); delete ui.queues[e.id]; }
+      if (queues.has(e.id)) { queues.get(e.id).length = 0; queues.delete(e.id); }
       if (e.depleted) continue;
       emit('died', { entity: e });
       if (e.kind === 'cc' && !ui.gameOver) {
@@ -331,9 +332,10 @@ export function createSim(world) {
 
   // ---------------------------------------------------------------- commands
   function applyCommand() {
+    // Engine clears input.command at the start of the next frame; we just avoid re-applying the same object.
     const cmd = world.input?.command;
-    if (!cmd) return;
-    world.input.command = null;
+    if (!cmd || cmd === lastCmd) return;
+    lastCmd = cmd;
     const sel = [...(world.input.selected || [])].filter(e => e.team === 0 && e.isUnit && e.state !== 'dead');
     if (!sel.length) return;
     const tgt = cmd.target && cmd.target.state !== 'dead' ? cmd.target : null;
@@ -520,12 +522,26 @@ export function createSim(world) {
   function update(dtIn) {
     sweep();
     if (ui.gameOver) return;
-    let dt = typeof dtIn === 'number' ? dtIn : world.clock?.dt ?? 0;
-    if (!(dt > 0)) return;
-    dt = Math.min(dt, 0.1);
-    T += dt;
-
+    // Always consume the full game dt (world.clock.dt = min(real,0.05)*speed). At high clock.speed this is
+    // split into <=0.1s substeps so steering/collisions stay stable; previously dt was clamped to 0.1, which
+    // silently ran the sim at a fraction of clock time (6.7% at speed 30) and stalled build queues.
+    let dtAll = typeof dtIn === 'number' ? dtIn : world.clock?.dt ?? 0;
+    if (!(dtAll > 0)) return;
     applyCommand();
+    const n = Math.min(40, Math.ceil(dtAll / 0.1));
+    const dt = dtAll / n;
+    for (let k = 0; k < n && !ui.gameOver; k++) step(dt);
+    for (const e of unitsBuf) {
+      const m = e.mesh;
+      if (!m) continue;
+      m.position?.set?.(e.x, 0, e.z);
+      if (m.rotation) m.rotation.y = e.rot;
+    }
+    writeUi();
+  }
+
+  function step(dt) {
+    T += dt;
     updateQueues(dt);
     enemyAI(dt);
 
@@ -551,14 +567,7 @@ export function createSim(world) {
       }
     }
     resolveCollisions(unitsBuf);
-    for (const e of unitsBuf) {
-      const m = e.mesh;
-      if (!m) continue;
-      m.position?.set?.(e.x, 0, e.z);
-      if (m.rotation) m.rotation.y = e.rot;
-    }
     sweep();
-    writeUi();
   }
 
   function writeUi() {

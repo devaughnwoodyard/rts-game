@@ -2,7 +2,7 @@
 import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.glb': 'model/gltf-binary', '.fbx': 'application/octet-stream', '.jpg': 'image/jpeg', '.png': 'image/png' };
+const mime = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.glb': 'model/gltf-binary', '.fbx': 'application/octet-stream', '.jpg': 'image/jpeg', '.png': 'image/png', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };
 export async function serve() {
   const server = http.createServer((req, res) => {
     let p = decodeURIComponent(req.url.split('?')[0]); if (p === '/') p = '/index.html';

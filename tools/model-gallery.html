@@ -1,0 +1,66 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Model Gallery</title>
+<style>html,body{margin:0;height:100%;background:#4a3e34;overflow:hidden}canvas{display:block}#lbl{position:fixed;left:8px;top:6px;color:#fff;font:12px system-ui;text-shadow:0 1px 2px #000}</style>
+<script type="importmap">
+{ "imports": { "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js",
+               "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script></head>
+<body><div id="lbl"></div>
+<script type="module">
+// Gallery for js/models.js. ?shot=base0|base1|units0|units1|line|close0|close1   (&night=1)
+import * as THREE from 'three';
+import { makeModel, updateModels, decorateBase } from '../js/models.js';
+const q = new URLSearchParams(location.search), shot = q.get('shot') || 'base0';
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x4a3e34); scene.fog = new THREE.Fog(0x4a3e34, 160, 400);
+const night = q.get('night') === '1';
+scene.add(new THREE.HemisphereLight(night ? 0x6070a0 : 0xfff0d8, 0x6b4a2b, night ? 0.35 : 1.0));
+const sun = new THREE.DirectionalLight(night ? 0x8090c0 : 0xfff0dc, night ? 0.5 : 2.4); sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048); Object.assign(sun.shadow.camera, { left: -40, right: 40, top: 40, bottom: -40, near: 1, far: 300 }); sun.shadow.bias = -0.0005;
+scene.add(sun, sun.target);
+const gtex = new THREE.TextureLoader().load('../assets/ground.jpg'); gtex.wrapS = gtex.wrapT = THREE.RepeatWrapping; gtex.repeat.set(24, 16); gtex.colorSpace = THREE.SRGBColorSpace;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 260), new THREE.MeshStandardMaterial({ map: gtex, roughness: 1, color: 0xd8c8b8 }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+let n = 0;
+function put(kind, team, x, z, ry = 0) { const m = makeModel(THREE, kind, team); if (!m) return null; m.position.set(x, 0, z); m.rotation.y = ry; scene.add(m); n++; return m; }
+// bases exactly as in game
+for (const team of [0, 1]) {
+  const s = team === 0 ? 1 : -1, bx = -55 * s, bz = 25 * s, face = Math.atan2(-bz, -bx);
+  put('cc', team, bx, bz); put('barracks', team, bx + 10 * s, bz + 10 * s); put('factory', team, bx + 10 * s, bz - 10 * s);
+  decorateBase(THREE, scene, team, bx, bz);
+  const P = (R, da) => [bx + Math.cos(face + da) * R, bz + Math.sin(face + da) * R];
+  const tur = (k, R, da) => { const [x, z] = P(R, da); const m = put(k, team, x, z); if (m?.userData.turret) m.userData.turret.rotation.y = -(face + da); };
+  tur('turret_mg', 17, 0.45); tur('turret_mg', 17, -0.45); tur('turret_cannon', 15, 0.9); tur('turret_cannon', 15, -0.9);
+  tur('artillery', 12, Math.PI / 2); tur('artillery', 12, -Math.PI / 2);
+  for (let i = -5; i <= 5; i++) { if (Math.abs(i) < 1) continue; const a = face + i * 0.18, x = bx + Math.cos(a) * 22, z = bz + Math.sin(a) * 22; put('wall', team, x, z, -a - Math.PI / 2); }
+  { const x = bx + Math.cos(face) * 22, z = bz + Math.sin(face) * 22; put('gate', team, x, z, -face); }
+  // units near rally
+  const ux = bx + Math.cos(face) * 13, uz = bz + Math.sin(face) * 13;
+  ['tank', 'raider', 'harvester', 'tank', 'raider'].forEach((k, i) => put(k, team, ux + (i % 3) * 4.5 - 4, uz + ((i / 3) | 0) * 4.5 - 2, -face));
+}
+// lineup row (for close shots)
+const LINE = ['tank', 'raider', 'harvester', 'turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate', 'crystal', 'rock'];
+LINE.forEach((k, i) => { put(k, 0, -24 + i * 5.4, 6, -0.5); put(k, 1, -24 + i * 5.4, 14, -0.5); });
+put('cc', 0, -12, 34); put('cc', 1, 12, 34); put('barracks', 0, -12, 50); put('factory', 0, 4, 50); put('barracks', 1, 18, 50); put('factory', 1, 32, 52);
+for (let i = 0; i < 4; i++) put('crystal', -1, -2 + i * 3, -6);
+const cam = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.5, 600);
+function look(tx, tz, dist, pitch, yaw = 0) {
+  const p = pitch * Math.PI / 180; cam.position.set(tx + Math.sin(yaw) * Math.cos(p) * dist, Math.sin(p) * dist, tz + Math.cos(yaw) * Math.cos(p) * dist);
+  cam.lookAt(tx, 0, tz); sun.position.set(tx - 50, 90, tz + 30); sun.target.position.set(tx, 0, tz);
+}
+const S = { base0: [-55 + 6, 25, 44, 65], base1: [55 - 6, -25, 44, 65], units0: [-49, 25, 20, 55], units1: [49, -25, 20, 55],
+  line: [0, 10, 34, 62], close0: [-13, 6, 15, 50], close1: [-13, 14, 15, 50], close0b: [11, 6, 15, 50], close1b: [11, 14, 15, 50],
+  ccs: [0, 40, 34, 55], ccv: [-55, 25, 24, 50], ccc: [55, -25, 24, 50] };
+look(...(S[shot] || S.base0));
+document.getElementById('lbl').textContent = shot + ' · ' + n + ' models · calls ' ;
+const t0 = performance.now();
+function frame() { updateModels(0, (performance.now() - t0) / 1000 + 3); renderer.render(scene, cam); document.getElementById('lbl').textContent = `${shot} · ${n} models · ${renderer.info.render.calls} calls`; requestAnimationFrame(frame); }
+frame();
+window.__ready = true;
+window.__calls = () => { const out = {}; for (const k of [...LINE, 'cc', 'barracks', 'factory']) for (const t of [0, 1]) { const m = makeModel(THREE, k, t); let c = 0; m?.traverse(o => { if (o.isMesh) c++; }); out[k + t] = c; } return out; };
+</script></body></html>

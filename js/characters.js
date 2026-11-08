@@ -8,12 +8,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 
-export const SOLDIER_HEIGHT = 1.6;          // world units (helmet top)
-const SRC_HEIGHT = 186;                      // rig units (cm) at the helmet top, from the converter bbox
+export const SOLDIER_HEIGHT = 1.9;          // world units (helmet top)
+const SRC_HEIGHT = 188;                      // rig units (cm) at the helmet top, from the converter bbox
 export const WALK_SPEED = 1.19 * SOLDIER_HEIGHT / 1.86; // world u/s that the walk clip covers at timeScale 1
 export const TEAM_COLORS = { 0: 0x2f6fe0, 1: 0xc8322e };
 
-let template = null;
+let template = null, envMap = null;
 const clips = {};
 const mats = new Map();
 
@@ -21,6 +21,7 @@ function teamMaterial(team) {
   if (mats.has(team)) return mats.get(team);
   const m = new THREE.MeshStandardMaterial({
     color: TEAM_COLORS[team] ?? 0x9aa3ad, vertexColors: true, metalness: 0.4, roughness: 0.5,
+    envMap, envMapIntensity: 0.9,
   });
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader
@@ -45,6 +46,7 @@ function teamMaterial(team) {
 
 // Loads the GLB once. Resolves to true on success; throws on failure (engine falls back to primitives).
 export async function loadCharacters(world) {
+  envMap = world?.envMap || null;
   const gltf = await new GLTFLoader().loadAsync('assets/chars/soldier.glb');
   template = gltf.scene;
   for (const c of gltf.animations) clips[c.name] = c;

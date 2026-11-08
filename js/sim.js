@@ -3,7 +3,10 @@
 // enemy army AI + waves, day/night, win/lose. All numbers come from config.js.
 //
 // TODO.md (stubs / assumptions):
-//  - e.rot is the mesh's rotation.y; models face local +X, so rot = atan2(-vz, vx). Turret aim is local to the hull.
+//  - e.rot is the mesh's rotation.y; models face local +X, so rot = atan2(-vz, vx) (= -atan2(vz, vx)). Turret aim is
+//    local to the hull and relaxes to forward out of combat.
+//  - Movement: grid A* (1u cells, per team) + steering; units boxed in with no path briefly 'ghost' through
+//    their own/neutral structures (never the other team's). Crystals block with config blockR (1.1), not r.
 //  - damage(victim, attacker, dmg) applies dmg AS GIVEN (already RPS-multiplied). Use sim.mul(attackerKind, victim)
 //    to compute the multiplier when calling from defense.js.
 //  - Entities flagged `external:true` are skipped by sim targeting/firing (for defense.js to drive itself).
@@ -703,7 +706,15 @@ export function createSim(world) {
       const m = e.mesh;
       if (!m) continue;
       m.position?.set?.(e.x, 0, e.z);
+      // e.rot is the mesh yaw: meshes face local +X, so heading (dx,dz) => rot = atan2(-dz, dx) == -atan2(dz, dx).
       if (m.rotation) m.rotation.y = e.rot;
+      // Out of combat, swing the turret back to the hull's forward so vehicles don't look like they drive sideways.
+      const tur = m.userData?.turret;
+      if (tur?.rotation && e.state !== 'attack' && tur.rotation.y) {
+        let d = ((tur.rotation.y + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
+        const mx = 4 * dtAll;
+        tur.rotation.y = Math.abs(d) <= mx ? 0 : d - Math.sign(d) * mx;
+      }
     }
     writeUi();
   }

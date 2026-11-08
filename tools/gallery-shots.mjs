@@ -26,7 +26,10 @@ for (const clip of clips) {
   await page.evaluate(() => { const w = window.world, g = w.gallery.lineup; w.setView('low'); w.zoomBy(0.01); w.jumpTo(g[2].position.x + 2.5, g[2].position.z - 2); });
   await page.waitForTimeout(700);
   await page.screenshot({ path: path.join(root, `test/out/gallery-close-${clip}.png`) });
-  await page.evaluate(() => { const w = window.world; w.zoomBy(100); w.jumpTo(w.gallery.lineup[0].position.x - 3, w.gallery.lineup[0].position.z + 6); });
+  await page.evaluate(() => { const w = window.world, g = w.gallery.lineup[2]; w.views.low.min = 5; w.views.low.zoom = 6; w.zoomBy(1); w.jumpTo(g.position.x, g.position.z - 0.5); });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(root, `test/out/gallery-macro-${clip}.png`) });
+  await page.evaluate(() => { const w = window.world; w.views.low.min = 16; w.zoomBy(100); w.jumpTo(w.gallery.lineup[0].position.x - 3, w.gallery.lineup[0].position.z + 6); });
 }
 await page.evaluate(() => window.world.setView('tactical'));
 await page.waitForTimeout(2500);

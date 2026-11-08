@@ -52,6 +52,25 @@ export async function createEngine() {
   }
   const hemi = new THREE.HemisphereLight(0x9fbce6, 0x7a5434, 1.25); // cool sky fill, warm ground bounce
   scene.add(sun, sun.target, hemi);
+  // Small prefiltered sky/ground gradient (+ warm sun spot) used as envMap by metallic materials (soldiers);
+  // exposed as world.envMap so models.js can opt in. Not set as scene.environment (keeps Lambert looks unchanged).
+  let envMap = null;
+  try {
+    const es = new THREE.Scene();
+    const sg = new THREE.SphereGeometry(10, 24, 12), col = [], pa = sg.attributes.position;
+    const top = new THREE.Color(0x8fb4e8), hor = new THREE.Color(0xe6cfae), bot = new THREE.Color(0x6a4a30), c = new THREE.Color();
+    for (let i = 0; i < pa.count; i++) {
+      const y = pa.getY(i) / 10;
+      if (y > 0) c.copy(hor).lerp(top, Math.pow(y, 0.6)); else c.copy(hor).lerp(bot, Math.min(1, -y * 3));
+      col.push(c.r, c.g, c.b);
+    }
+    sg.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    es.add(new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })));
+    const spot = new THREE.Mesh(new THREE.SphereGeometry(1.1, 8, 6), new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffd7a8).multiplyScalar(6) }));
+    spot.position.copy(SUN_DIR).multiplyScalar(8.5); es.add(spot);
+    const pm = new THREE.PMREMGenerator(renderer);
+    envMap = pm.fromScene(es, 0.02).texture; pm.dispose();
+  } catch (err) { console.warn('[engine] env map failed', err?.message); }
 
   const world = {
     THREE, scene, renderer, camera: null,
@@ -67,6 +86,7 @@ export async function createEngine() {
           queues: { barracks: [], factory: [] }, defenseTier: 0, enemyTier: 0,
           message: null, gameOver: null },
     lights: { hemi, sun },
+    envMap,
     camTarget: { x: BASES[0].x + 17, z: BASES[0].z + 1 }, // base sits left-center of the opening view
     view: 'tactical',
     views: VIEWS,
@@ -550,7 +570,7 @@ export async function createEngine() {
   try { chars = await import('./characters.js'); await chars.loadCharacters(world); }
   catch (err) { console.warn('[engine] soldier.glb not loaded, using primitive wardens:', err?.message || err); chars = null; }
   const squads = new Set();
-  const SQUAD_POS = [[0.62, 0], [-0.44, 0.64], [-0.44, -0.64]];
+  const SQUAD_POS = [[0.7, 0], [-0.5, 0.72], [-0.5, -0.72]];
   function playSquad(sq, name, fade = 0.2) {
     sq.clip = name;
     sq.soldiers.forEach((s, i) => s.play(name, fade, { offset: sq.offsets[i] + Math.random() * 0.15 }));

@@ -4,15 +4,18 @@
 //  - Enemy: harvester income + trickle (base + growth per minute) → ~8k crystals over 30 min.
 //  - Waves every 90s from 4:00, size grows ~1 unit / 2.5 min; supply cap 40 limits both sides.
 //  - CCs are 8000hp so a match lands in the 30–40 min window.
+// v2 (10x map, 4 factions): unit speeds x1.6 so a 220u cross-quadrant wave takes ~30s; base field sits 25u from
+// the cc (trip ~22s); center fields are 'rich' (x1.5 carry) to pay for the ~60s round trip. Supply cap 40/team and
+// a global 160-unit cap keep 4 armies phone-sized. Match target 30–45 min.
 
 export const CONFIG = {
   // ---- Units ------------------------------------------------------------
   // dps = base damage per second; each shot deals dps * cooldown * RPS multiplier.
   units: {
-    warden:    { hp: 110, speed: 4.5, range: 10, dps: 11, cooldown: 1.1, cost: 60,  buildTime: 20, supply: 1, r: 1.2, cls: 'inf', light: false },
-    raider:    { hp: 200, speed: 8.5, range: 8,  dps: 14, cooldown: 0.25, cost: 90, buildTime: 25, supply: 2, r: 1.6, cls: 'veh', light: true },
-    tank:      { hp: 520, speed: 4.0, range: 13, dps: 22, cooldown: 2.0, cost: 200, buildTime: 45, supply: 4, r: 2.2, cls: 'veh', light: false },
-    harvester: { hp: 320, speed: 4.0, range: 0,  dps: 0,  cooldown: 0,   cost: 100, buildTime: 40, supply: 2, r: 2.0, cls: 'veh', light: false },
+    warden:    { hp: 110, speed: 7.2, range: 10, dps: 11, cooldown: 1.1, cost: 60,  buildTime: 20, supply: 1, r: 1.2, cls: 'inf', light: false },
+    raider:    { hp: 200, speed: 13.6, range: 8,  dps: 14, cooldown: 0.25, cost: 90, buildTime: 25, supply: 2, r: 1.6, cls: 'veh', light: true },
+    tank:      { hp: 520, speed: 6.4, range: 13, dps: 22, cooldown: 2.0, cost: 200, buildTime: 45, supply: 4, r: 2.2, cls: 'veh', light: false },
+    harvester: { hp: 320, speed: 6.4, range: 0,  dps: 0,  cooldown: 0,   cost: 100, buildTime: 40, supply: 2, r: 2.0, cls: 'veh', light: false },
   },
 
   // ---- Buildings (player-side production + neutral crystal) ---------------
@@ -55,13 +58,15 @@ export const CONFIG = {
     depositTime: 2,       // seconds at the cc
     tripTarget: 25,       // documentation: intended full round-trip
     idleHarvesterRestart: 3, // seconds a manually-moved harvester idles before auto-resuming
+    richMul: 1.5,         // carry multiplier at the contested center fields
   },
   supplyCap: 40,
+  unitCap: 160,           // all teams combined (phone perf)
   queueMax: 5,
 
   // ---- Pacing -----------------------------------------------------------
   pacing: {
-    matchTargetMin: [30, 40],
+    matchTargetMin: [30, 45],
     waveInterval: 90,       // s
     firstWave: 240,         // s grace before first wave
     waveBase: 2,            // units in first wave
@@ -90,12 +95,35 @@ export const CONFIG = {
     bldPenalty: 6,     // prefer units over buildings when scoring targets
   },
 
+  // v2 layout. Base positions are fractions of the half-extents so any world.map size works
+  // (512x320 -> cc at (+-200, +-110)). Other distances are absolute world units.
   map: {
-    playerBase: { x: -55, z: 25 },
-    enemyBase: { x: 55, z: -25 },
-    playerBarracks: { x: -45, z: 35 }, playerFactory: { x: -45, z: 15 },
-    playerField: { x: -35, z: 25 }, enemyField: { x: 35, z: -25 }, centerField: { x: 0, z: 0 },
-    fieldSpread: 4,
+    baseFrac: { x: 200 / 256, z: 110 / 160 },
+    bldOff: 10,            // barracks/factory: 10u toward center in x, +-10u in z (v1 offsets, mirrored)
+    toField: 25,           // base crystal field distance from cc, toward map center
+    fieldCrystals: 4, fieldSpread: 4,
+    centerFields: [{ fx: 0, fz: 0 }, { fx: -110 / 256, fz: 0 }, { fx: 110 / 256, fz: 0 }],
+    centerCrystals: 7, centerSpread: 6.5,
     rallyOffset: 4,
   },
+
+  // team t base quadrant signs (x, z) per CONTRACT v2: 0 SW, 1 NE, 2 NW, 3 SE
+  teams: {
+    count: 4,
+    quad: [[-1, 1], [1, -1], [-1, -1], [1, 1]],
+    factions: ['vanguard', 'volcanic', 'earth', 'storm'],
+    names: ['Vanguard', 'Volcanic Clans', 'Earth Cult', 'Storm Nomads'],
+    colors: [0x2fb8ff, 0xff5a12, 0x5fd35f, 0xe8d27a],
+  },
+
+  // Fog of war (team 0 only). Sight is measured from the entity edge for buildings.
+  fog: {
+    cell: 4, interval: 0.25,
+    sight: { inf: 18, veh: 22, harvester: 14, bld: 26, turret: 30 },
+    tallMul: 1.4, survMul: 1.5,
+  },
+
+  // Perf: uniform spatial hash for neighbor/target queries; coarse nav grid for A*.
+  hash: { cell: 16 },
+  nav: { cell: 2, infl: 1.0, pathsPerStep: 6, maxIter: 30000 },
 };

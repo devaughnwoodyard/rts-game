@@ -444,7 +444,7 @@ export async function createEngine() {
           const s = new THREE.Group();
           const body = new THREE.Mesh(capG, T); body.position.y = 0.6; s.add(body);
           s.add(box(0.18, 0.14, 0.42, D, 0.24, 1.0, 0)); // visor
-          s.add(cyl(0.08, 0.08, 0.8, 6, D, -0.05, 0.85, 0.32)).rotation.z = Math.PI / 2; // rocket tube
+          { const t = cyl(0.08, 0.08, 0.8, 6, D, -0.05, 0.85, 0.32); t.rotation.z = Math.PI / 2; s.add(t); } // rocket tube
           s.position.set(ox, 0, oz); g.add(s);
         }
         break;

@@ -4,7 +4,7 @@
 **Map:** 10× area. `world.map = { w: 512, h: 320 }`, origin at center. Four factions, free-for-all, player is team 0; teams 1–3 are AI.
 | team | faction | base (cc) | biome | color |
 |---|---|---|---|---|
-| 0 | Vanguard (cyberpunk) | (-200, 110) SW | URBAN: dark asphalt/concrete megacity ruins, cracked roads with glowing neon lane lines, overgrown-free, puddles, ruined towers as obstacles (NOT desert) | 0x2fb8ff |
+| 0 | Vanguard (INDUSTRIAL, not sci-fi) | (-200, 110) SW | INDUSTRIAL ZONE: concrete slabs, oil-stained asphalt, rail tracks, gravel, puddles; obstacles = factory ruins, cooling towers, slag heaps, shipping-container stacks, gantry cranes (NOT desert) | 0x2f8fd8 |
 | 1 | Volcanic Clans | (200, -110) NE | volcanic: basalt, burned ground, cracked red earth, lava | 0xff5a12 |
 | 2 | Earth Cult (nature/sun/stone) | (-200, -110) NW | forest + rocky red mountainside: grass/forest ground, cliffs, trees | 0x5fd35f |
 | 3 | Storm Nomads (lightning/wind) | (200, 110) SE | open dunes: sand, wind-rippled | 0xe8d27a |
@@ -14,6 +14,12 @@ ONLY the Storm Nomads quadrant is desert. Each quadrant must look like its facti
 - Obstacles: mountains/cliffs (NW), lava pools (NE, impassable), dune ridges (SE), mesas (center/SW) — all as `world.obstacles` circles; bigger ones are several overlapping circles.
 - AI: every non-player team runs the same enemy AI (build, harvest, defense tiers, waves). Each AI targets the nearest enemy cc (player or AI). AIs fight each other.
 - Win when all other ccs are destroyed; lose when yours is.
+
+**Heroes (new, owned by HEROES worker in js/heroes.js + js/fx.js):** one hero per faction, trained at the cc (cost 600, 60s, unique; respawn at cc 90s after death). Entities: `kind:'hero'`, `faction`, `cls:'inf'`, `hero:true`, with per-entity stats on `e.stats = {hp, speed, range, dps, cooldown, r, sight}` that sim MUST prefer over CONFIG when present (sim handles hero movement, auto-targeting and basic attacks like any unit). Abilities live in heroes.js: `world.heroes.cast(hero, abilityId, target?)`; AI teams auto-cast when ≥2 enemies in range. Damage via `sim.damage`; status effects via `e.status = {rooted:t, stunned:t, dmgMul:x, until:t}` that sim respects (rooted/stunned = no move; stunned = no attack; dmgMul scales incoming damage). Events: `ability {hero, id, x, z, targets}` for fx.
+- vanguard **Ironclad**: exosuit, laser rifle (beam), hp 1400, passive incoming dmg ×0.75; **Bulwark** (cd 30s): dmgMul 0.3 for 6s + nearby enemies retarget him.
+- storm **Thunderwarden**: electric hammer melee (range 3), hp 1200, fast; **Chain Lightning** (cd 18s): 220 dmg to target, chains to 4 more within 12u (×0.8 each), 1s stun on each.
+- volcanic **Magmablade**: red-hot volcano blade melee + M16-style rifle (switches: rifle >5u, blade ≤5u, blade dps ×2.5), hp 1100; **Eruption Slash** (cd 20s): dash 14u toward target, 250 dmg in a cone, leaves a fire patch 4s (40 dps).
+- earth **Sylvan Warden** (original tall nature being, bark-like skin, glowing gold markings — NOT a Na'vi/Avatar copy): crossbow, longest range (30), hp 1000; **Rootbind** (cd 24s): roots all enemies in r=8 for 3s and heals allies in r=10 for 200 over 3s.
 
 **Fog of war (new):**
 - Sim owns visibility: `world.fog = { enabled: true, cell: 4, cols, rows, explored: Uint8Array, visible: Uint8Array, version }` for team 0 only. Each 0.25 s recompute `visible` from team-0 units (sight: inf 18, veh 22, harvester 14, bld 26, turrets 30 (+40% w/ tall turrets), surveillance tier = +50%); `explored |= visible`. Bump `version` on change.

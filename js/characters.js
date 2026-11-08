@@ -22,14 +22,14 @@ const mats = new Map();
 // glow strips (cyan), gun-light (grey .42). Each faction maps the classes to colour/emissive.
 const hex = (h) => new THREE.Color(h);
 const STYLE = {
-  0: { // Vanguard cyberpunk: glossy near-black, cyan visor + neon trim, magenta accents
-    body: hex(0x161a22), mid: hex(0x222a3a), light: hex(0x2b3550), rough: 0.26, metal: 0.65,
-    trimEm: hex(0x39d8ff).multiplyScalar(1.4), visorEm: hex(0x39d8ff).multiplyScalar(2.0),
-    glowEm: hex(0xff3dbd).multiplyScalar(1.6), gunEm: hex(0x000000),
+  0: { // Vanguard industrial: steel-blue painted plates, yellow hazard trim, welder visor (thin cyan strip)
+    body: hex(0x2f5f8f), mid: hex(0x264c72), light: hex(0x4a78a6), rough: 0.5, metal: 0.45,
+    trimCol: hex(0xe0b020), trimEm: hex(0x000000), visorEm: hex(0x0a1418),
+    glowEm: hex(0x39d8ff).multiplyScalar(0.9), gunEm: hex(0x000000),
   },
   1: { // Volcanic Clans: blackened iron/obsidian, magma seams, ember lenses, glowing barrel
     body: hex(0x1c1715), mid: hex(0x2a211d), light: hex(0x3a2b24), rough: 0.55, metal: 0.5,
-    trimEm: hex(0xff6a1a).multiplyScalar(1.3), visorEm: hex(0xff6a1a).multiplyScalar(2.0),
+    trimCol: hex(0x110d0b), trimEm: hex(0xff6a1a).multiplyScalar(1.3), visorEm: hex(0xff6a1a).multiplyScalar(2.0),
     glowEm: hex(0xff6a1a).multiplyScalar(1.8), gunEm: hex(0xff4a10).multiplyScalar(0.55),
   },
 };
@@ -41,11 +41,11 @@ function teamMaterial(team) {
     color: st.body, vertexColors: true, metalness: st.metal, roughness: st.rough,
     envMapIntensity: 1.0, // lit by scene.environment (engine scales it, see trackEnv)
   });
-  const U = { uMid: { value: st.mid }, uLight: { value: st.light }, uTrimEm: { value: st.trimEm },
+  const U = { uTrimCol: { value: st.trimCol }, uMid: { value: st.mid }, uLight: { value: st.light }, uTrimEm: { value: st.trimEm },
     uVisorEm: { value: st.visorEm }, uGlowEm: { value: st.glowEm }, uGunEm: { value: st.gunEm } };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
-    sh.fragmentShader = 'uniform vec3 uMid, uLight, uTrimEm, uVisorEm, uGlowEm, uGunEm;\n' + sh.fragmentShader
+    sh.fragmentShader = 'uniform vec3 uTrimCol, uMid, uLight, uTrimEm, uVisorEm, uGlowEm, uGunEm;\n' + sh.fragmentShader
       .replace('#include <color_fragment>', `
   float vSum = 3.0; vec3 partEm = vec3(0.0);
   #if defined( USE_COLOR_ALPHA )
@@ -53,7 +53,7 @@ function teamMaterial(team) {
     if ( vColor.a > 0.9 ) {
       if ( vColor.r > 0.9 ) diffuseColor.rgb = diffuseColor.rgb;          // body: faction colour
       else if ( vColor.r > 0.72 ) diffuseColor.rgb = uMid;                // mid plates
-      else { diffuseColor.rgb = diffuseColor.rgb * 0.6; partEm = uTrimEm; } // trim: neon / magma seams
+      else { diffuseColor.rgb = uTrimCol; partEm = uTrimEm; } // trim: hazard paint / magma seams
     } else if ( vColor.a > 0.3 ) diffuseColor.rgb = uLight;               // light plates
     else if ( vSum < 0.15 ) { diffuseColor.rgb = vec3(0.01); partEm = uVisorEm; }
     else if ( vColor.b > 0.9 && vColor.r < 0.7 ) { diffuseColor.rgb = vec3(0.05); partEm = uGlowEm; }
@@ -106,13 +106,21 @@ function buildAttachments() {
   const cape = [];
   [[-10, 46, 0.22, ASH], [0, 40, 0.18, ASH2], [10, 50, 0.25, ASH]].forEach(([x, h, tilt, c]) => cape.push(put(new THREE.BoxGeometry(11, h, 1.4), S2, [x, 14 - h / 2, -32 - h * 0.12], [tilt, 0, 0], c)));
   attach[1] = { head: merge(head(), 'Head'), headLeader: merge([...head(), ...horns()], 'Head'), glow: merge(lenses(), 'Head'), cape: merge(cape, 'Spine2') };
-  // Vanguard: cyan visor strip across the helmet front + magenta crest light
-  attach[0] = { glow: merge([put(new THREE.BoxGeometry(23, 4.2, 3), H, [0, 11, 14.2], [0, 0, 0]), put(new THREE.BoxGeometry(2, 3, 18), H, [0, 27.2, 2], [0, 0, 0], 0xff3dbd)], 'Head') };
+  // Vanguard industrial: welder visor plate (dark glass) with a thin cyan strip, chunky rebreather;
+  // the squad leader adds a yellow helmet stripe
+  const vHead = () => [
+    put(new THREE.BoxGeometry(24, 9, 3), H, [0, 11, 14.4], [0, 0, 0], 0x0b0f12),               // welder glass
+    put(new THREE.BoxGeometry(14, 9, 9), H, [0, 2.5, 14], [0.2, 0, 0], 0x3a3f45),              // rebreather
+    ...[-1, 1].map((sx) => put(new THREE.CylinderGeometry(3, 3, 6, 8), H, [sx * 8.5, 1, 13], [Math.PI / 2, 0, 0], 0x23272c)),
+  ];
+  attach[0] = {
+    head: merge(vHead(), 'Head'),
+    headLeader: merge([...vHead(), put(new THREE.BoxGeometry(5, 3, 30), H, [0, 25.3, 1], [0, 0, 0], 0xe0b020)], 'Head'),
+    glow: merge([put(new THREE.BoxGeometry(20, 1.4, 1), H, [0, 11.5, 16.1], [0, 0, 0], 0x39d8ff)], 'Head'),
+  };
   attachMats.dark = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
   attachMats.glow1 = new THREE.MeshBasicMaterial({ color: hex(0xff6a1a).multiplyScalar(1.6), toneMapped: true });
   attachMats.glow0 = new THREE.MeshBasicMaterial({ vertexColors: true, color: hex(0xffffff).multiplyScalar(1.5) });
-  // cyan for the visor strip: tint the white verts
-  const c0 = attach[0].glow.attributes.color; for (let i = 0; i < c0.count; i++) if (c0.getX(i) > 0.99 && c0.getZ(i) > 0.99) c0.setXYZ(i, 0.22, 0.85, 1);
 }
 function addGear(body, team, leader) {
   const set = attach[team]; if (!set) return;
@@ -122,7 +130,7 @@ function addGear(body, team, leader) {
     const m = new THREE.Mesh(geo, mat); m.castShadow = mat.isMeshStandardMaterial; m.frustumCulled = false; bone.add(m);
   };
   if (team === 1) { add(leader ? set.headLeader : set.head, attachMats.dark); add(set.cape, attachMats.dark); add(set.glow, attachMats.glow1); }
-  else add(set.glow, attachMats.glow0);
+  else { add(leader ? set.headLeader : set.head, attachMats.dark); add(set.glow, attachMats.glow0); }
 }
 
 // Loads the GLB once. Resolves to true on success; throws on failure (engine falls back to primitives).

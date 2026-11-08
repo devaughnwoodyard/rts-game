@@ -9,12 +9,12 @@ Industrial all-rounder. Area denial + fortification instead of artillery: Sapper
 
 | Unit | Role | Cost | HP | Armor | EHP | Speed | Range | DPS | Shot | Abilities |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Ironjacket Trooper** | infantry | 70 | 139 | 15% | 164 | 7.2 | 10 | 8.9 | minimissile | Frag Grenade*, Dig In*, Flare*, Brace (p) |
-| **Bulldog APC** | light | 100 | 238 | 20% | 298 | 11.5 | 10 | 10.9 | minimissile | Smoke Screen*, Ram*, Overdrive*, Repair Rig (p) |
-| **Anvil Heavy Tank** | heavy | 220 (+20) | 555 | 30% | 793 | 5.8 | 13 | 21.8 | slug | Brace Hull*, AP Slug*, Composite Plating (p), Spotter Link (p) |
+| **Ironjacket Trooper** | infantry | 70 | 136 | 15% | 160 | 7.2 | 10 | 8.8 | minimissile | Frag Grenade*, Dig In*, Flare*, Brace (p) |
+| **Bulldog APC** | light | 100 | 234 | 20% | 293 | 11.5 | 10 | 10.7 | minimissile | Smoke Screen*, Ram*, Overdrive*, Repair Rig (p) |
+| **Anvil Heavy Tank** | heavy | 220 (+20) | 546 | 30% | 780 | 5.8 | 13 | 21.4 | slug | Brace Hull*, AP Slug*, Composite Plating (p), Spotter Link (p) |
 | **Crawler Hauler** | harvester | 100 | 380 | 25% | 507 | 7 | 0 | 0.0 | null | Emergency Plating*, Afterburner*, Distress Beacon*, Reinforced Frame (p) |
-| **Sapper Crew** | special | 120 (+10) | 149 | 20% | 186 | 7.2 | 8 | 8.9 | bullet | Lay Minefield*, Claymore*, Demolition Charge*, Mine Sweep (p) |
-| **Skyguard Flak Truck** | aa | 130 (+10) | 317 | 20% | 396 | 8 | 16 | 19.8 | bullet | Flak Burst*, Radar Sweep*, Deploy Struts*, Tracking Radar (p) |
+| **Sapper Crew** | special | 120 (+10) | 146 | 20% | 183 | 7.2 | 8 | 8.8 | bullet | Lay Minefield*, Claymore*, Demolition Charge*, Mine Sweep (p) |
+| **Skyguard Flak Truck** | aa | 130 (+10) | 312 | 20% | 390 | 8 | 16 | 19.5 | bullet | Flak Burst*, Radar Sweep*, Deploy Struts*, Tracking Radar (p) |
 
 <details><summary>Ability details</summary>
 
@@ -33,12 +33,12 @@ STURDIEST TANKS: magma-coated armor, burn-on-hit, molten regen out of combat. Ow
 
 | Unit | Role | Cost | HP | Armor | EHP | Speed | Range | DPS | Shot | Abilities |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Cinder Brute** | infantry | 65 | 120 | 15% | 141 | 6.4 | 7 | 12.0 | slug | Flame Burst*, Ember Rush*, Ignite (p), Molten Skin (p) |
-| **Scorch Crawler** | light | 100 | 240 | 25% | 320 | 9 | 7 | 13.0 | slug | Napalm Sweep*, Oil Slick*, Heat Haze*, Ignite (p) |
-| **Magma Juggernaut** | heavy | 260 (+30) | 761 | 45% | 1384 | 4.8 | 11 | 20.0 | slug | Magma Coat (p), Molten Ram*, Slag Spray*, Hardened Crust* |
+| **Cinder Brute** | infantry | 65 | 121 | 15% | 142 | 6.4 | 7 | 12.1 | slug | Flame Burst*, Ember Rush*, Ignite (p), Molten Skin (p) |
+| **Scorch Crawler** | light | 100 | 243 | 25% | 324 | 9 | 7 | 13.2 | slug | Napalm Sweep*, Oil Slick*, Heat Haze*, Ignite (p) |
+| **Magma Juggernaut** | heavy | 260 (+30) | 769 | 45% | 1398 | 4.8 | 11 | 20.2 | slug | Magma Coat (p), Molten Ram*, Slag Spray*, Hardened Crust* |
 | **Slag Hauler** | harvester | 100 | 420 | 30% | 600 | 6.6 | 0 | 0.0 | null | Magma Vent*, Harden*, Lava Trail*, Molten Skin (p) |
-| **Crucible Siege Mortar** | special, crew 4 | 190 (+25) | 361 | 30% | 516 | 4.2 | 24 | 14.0 | ironball | Slag Shell*, Ricochet Shot*, Bracing (p), Red-Hot Load* |
-| **Ash Cannon** | aa, crew 3 | 130 (+10) | 381 | 30% | 544 | 5.6 | 15 | 20.0 | bullet | Ash Cloud*, Pumice Shrapnel*, Anchor Spikes*, Molten Skin (p) |
+| **Crucible Siege Mortar** | special, crew 4 | 190 (+25) | 364 | 30% | 520 | 4.2 | 24 | 14.2 | ironball | Slag Shell*, Ricochet Shot*, Bracing (p), Red-Hot Load* |
+| **Ash Cannon** | aa, crew 3 | 130 (+10) | 385 | 30% | 550 | 5.6 | 15 | 20.2 | bullet | Ash Cloud*, Pumice Shrapnel*, Anchor Spikes*, Molten Skin (p) |
 
 <details><summary>Ability details</summary>
 
@@ -57,12 +57,12 @@ STRONGEST AIR (Sunwing heavy flyer + Dawnglider swarms), Deepmaw BURROWER (hidde
 
 | Unit | Role | Cost | HP | Armor | EHP | Speed | Range | DPS | Shot | Abilities |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Grove Archer** | infantry | 55 | 98 | 0% | 98 | 7.6 | 12 | 11.3 | arrow | Mend*, Monsoon*, Photosynthesis (p), Thorn Arrows (p) |
-| **Thornback Lancer** | light | 95 | 226 | 5% | 238 | 11.5 | 11 | 14.4 | spear | Pounce*, Piercing Spear*, Flash Flood*, Barkskin (p) |
-| **Sunwing** | heavy (air) | 240 (+40) | 576 | 15% | 678 | 10 | 12 | 26.7 | laser | Solar Beam*, Sun Dive*, Radiant Plumage (p), Sunburst* |
+| **Grove Archer** | infantry | 55 | 94 | 0% | 94 | 7.6 | 12 | 10.9 | arrow | Mend*, Monsoon*, Photosynthesis (p), Thorn Arrows (p) |
+| **Thornback Lancer** | light | 95 | 217 | 5% | 228 | 11.5 | 11 | 13.8 | spear | Pounce*, Piercing Spear*, Flash Flood*, Barkskin (p) |
+| **Sunwing** | heavy (air) | 240 (+40) | 553 | 15% | 651 | 10 | 12 | 25.7 | laser | Solar Beam*, Sun Dive*, Radiant Plumage (p), Sunburst* |
 | **Rootback Gatherer** | harvester | 100 | 280 | 5% | 295 | 7.2 | 0 | 0.0 | null | Tunnel Escape*, Surface*, Root Shield*, Photosynthesis (p) |
-| **Deepmaw Burrower** | special | 160 (+20) | 350 | 15% | 412 | 8 | 6 | 18.5 | spear | Burrow*, Erupt*, Tremor Sense (p), Root Network (p) |
-| **Dawnglider Flock** | air (air) | 80 (+10) | 134 | 0% | 134 | 14 | 9 | 13.4 | arrow | Swarm Swoop*, Updraft*, Feather Storm*, Flock Instinct (p) |
+| **Deepmaw Burrower** | special | 160 (+20) | 336 | 15% | 395 | 8 | 6 | 17.8 | spear | Burrow*, Erupt*, Tremor Sense (p), Root Network (p) |
+| **Dawnglider Flock** | air (air) | 80 (+10) | 128 | 0% | 128 | 14 | 9 | 12.8 | arrow | Swarm Swoop*, Updraft*, Feather Storm*, Flock Instinct (p) |
 
 <details><summary>Ability details</summary>
 
@@ -81,12 +81,12 @@ QUICKEST: land-yachts and sail-cruisers, hit-and-run, chain lightning, speed buf
 
 | Unit | Role | Cost | HP | Armor | EHP | Speed | Range | DPS | Shot | Abilities |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **Gale Skirmisher** | infantry | 55 | 83 | 0% | 83 | 10.5 | 10 | 13.7 | lightning | Tailwind*, Shock Javelin*, Static Charge (p), Windstep* |
-| **Dune Yacht** | light | 85 | 176 | 0% | 176 | 18 | 9 | 17.6 | bullet | Full Sail*, Arc Lance*, Hit and Run (p), Jib Turn* |
-| **Thunderhead Sail-Cruiser** | heavy | 200 (+20) | 431 | 10% | 479 | 13 | 14 | 25.5 | lightning | Chain Lightning*, Storm Front*, Capacitor Bank (p), Gust Ram* |
+| **Gale Skirmisher** | infantry | 55 | 87 | 0% | 87 | 10.5 | 10 | 14.4 | lightning | Tailwind*, Shock Javelin*, Static Charge (p), Windstep* |
+| **Dune Yacht** | light | 85 | 185 | 0% | 185 | 18 | 9 | 18.5 | bullet | Full Sail*, Arc Lance*, Hit and Run (p), Jib Turn* |
+| **Thunderhead Sail-Cruiser** | heavy | 200 (+20) | 452 | 10% | 502 | 13 | 14 | 26.7 | lightning | Chain Lightning*, Storm Front*, Capacitor Bank (p), Gust Ram* |
 | **Sand Skimmer** | harvester | 100 | 240 | 0% | 240 | 8 | 0 | 0.0 | null | Run Before the Wind*, Static Discharge*, Dust Mirage*, Featherweight (p) |
-| **Tempest Caller** | special | 130 (+15) | 127 | 0% | 127 | 9 | 14 | 11.8 | lightning | Lightning Storm*, Overcharge*, Dust Devil*, Static Field (p) |
-| **Kitewing Skyraider** | air (air) | 110 (+15) | 157 | 0% | 157 | 16 | 10 | 15.7 | lightning | Lightning Strike*, Downdraft*, Jetstream*, Evasive Rigging (p) |
+| **Tempest Caller** | special | 130 (+15) | 133 | 0% | 133 | 9 | 14 | 12.3 | lightning | Lightning Storm*, Overcharge*, Dust Devil*, Static Field (p) |
+| **Kitewing Skyraider** | air (air) | 110 (+15) | 164 | 0% | 164 | 16 | 10 | 16.4 | lightning | Lightning Strike*, Downdraft*, Jetstream*, Evasive Rigging (p) |
 
 <details><summary>Ability details</summary>
 
@@ -99,3 +99,15 @@ QUICKEST: land-yachts and sail-cruisers, hit-and-run, chain lightning, speed buf
 
 </details>
 
+## Balance status (live sim)
+
+`node tools/livematch.mjs --matrix --seeds=4 --min=20`: real sim/economy/defense/AI, 1v1 on the NE/SE bases, sides swapped, 8 matches per pair (row win %, margin = surviving army + damage).
+
+| | vanguard | volcanic | earth | storm |
+|---|---|---|---|---|
+| vanguard | – | 75% (+10) | 63% (+2) | 75% (+11) |
+| volcanic | 25% | – | 63% (+10) | 50% (+6) |
+| earth | 37% | 37% | – | 75% (+16) |
+| storm | 25% | 50% | 25% | – |
+
+Results are noisy: one seed set swings margins by ±10 between runs. Storm is strong early (min 10–15) and falls off by min 20; Vanguard is slightly ahead overall.

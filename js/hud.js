@@ -41,7 +41,11 @@ export function createHud(world, sim) {
   const btnQ = el('button', 'v-q', 'GFX ' + (qName[world.quality] || 'Med'));
   btnQ.title = 'Graphics quality (reloads)';
   btnQ.addEventListener('click', () => { const qs = world.qualities || ['low', 'med', 'high']; world.setQuality?.(qs[(qs.indexOf(world.quality) + 1) % qs.length]); });
-  top.append(stats, el('div', 'v-sp'), btnDef, btnView, btnSpeed, btnQ);
+  const btnFog = el('button', 'v-fog', 'Fog: On'); // TERRAIN: fog-of-war toggle (also key F)
+  const toggleFog = () => { if (world.fog) world.fog.enabled = !world.fog.enabled; };
+  btnFog.addEventListener('click', toggleFog);
+  window.addEventListener('keydown', (e) => { if (e.key === 'f' || e.key === 'F') { if (!e.repeat && !/input|textarea/i.test(e.target?.tagName || '')) toggleFog(); } });
+  top.append(stats, el('div', 'v-sp'), btnDef, btnView, btnSpeed, btnFog, btnQ);
   root.append(top);
 
   btnView.addEventListener('click', () => {
@@ -56,12 +60,12 @@ export function createHud(world, sim) {
   let busMsg = null, busUntil = 0, lastUiMsg = null, uiUntil = 0;
   world.bus?.addEventListener?.('message', (e) => { busMsg = e.detail?.text; busUntil = performance.now() + (e.detail?.ms || 2500); });
 
-  // ---- minimap
+  // ---- minimap (owner: TERRAIN) — whole map, biome colours, fog shading, ghosts of last-seen enemy buildings
   const mini = el('div', 'v-panel v-mini');
   const mc = document.createElement('canvas');
   mini.append(mc); root.append(mini);
-  const MW = 120, MH = 75, mdpr = Math.min(window.devicePixelRatio || 1, 2);
-  mc.width = MW * mdpr; mc.height = MH * mdpr;
+  const MW = 144, MH = Math.round(MW * (world.map.h / world.map.w)), mdpr = Math.min(window.devicePixelRatio || 1, 2);
+  mc.width = MW * mdpr; mc.height = MH * mdpr; mc.style.width = MW + 'px'; mc.style.height = MH + 'px';
   const m = mc.getContext('2d');
   const toMini = (x, z) => [(x / world.map.w + 0.5) * MW, (z / world.map.h + 0.5) * MH];
   function miniJump(e) {
@@ -73,6 +77,22 @@ export function createHud(world, sim) {
   mc.addEventListener('pointerdown', (e) => { e.preventDefault(); stop(e); miniDown = true; try { mc.setPointerCapture(e.pointerId); } catch {} miniJump(e); });
   mc.addEventListener('pointermove', (e) => { if (miniDown) { e.preventDefault(); miniJump(e); } });
   for (const ev of ['pointerup', 'pointercancel']) mc.addEventListener(ev, () => { miniDown = false; });
+  // fog layer: one pixel per fog cell, scaled up with smoothing
+  const fogC = document.createElement('canvas'), fg = fogC.getContext('2d');
+  let fogImg = null, fogVer = -1;
+  function fogLayer(fog) {
+    if (!fogImg || fogC.width !== fog.cols || fogC.height !== fog.rows) { fogC.width = fog.cols; fogC.height = fog.rows; fogImg = fg.createImageData(fog.cols, fog.rows); fogVer = -1; }
+    if (fog.version === fogVer) return;
+    fogVer = fog.version;
+    const d = fogImg.data, v = fog.visible, x = fog.explored;
+    for (let i = 0; i < v.length; i++) { d[i * 4 + 3] = v[i] ? 0 : x[i] ? 135 : 225; }
+    fg.putImageData(fogImg, 0, 0);
+  }
+  const ghosts = new Map(); // enemy building id -> {x,z,r,team,kind} (last seen)
+  const fogVisibleAt = (fog, x, z) => {
+    const cx = Math.floor((x + world.map.w / 2) / fog.cell), cz = Math.floor((z + world.map.h / 2) / fog.cell);
+    return cx >= 0 && cz >= 0 && cx < fog.cols && cz < fog.rows && !!fog.visible[cz * fog.cols + cx];
+  };
 
   // ---- selection chip
   const chip = el('div', 'v-panel v-chip');
@@ -157,29 +177,51 @@ export function createHud(world, sim) {
 
   function drawMini() {
     m.setTransform(mdpr, 0, 0, mdpr, 0, 0);
-    m.fillStyle = '#7a5434'; m.fillRect(0, 0, MW, MH);
-    m.fillStyle = '#5d6066';
-    for (const o of world.obstacles || []) {
-      const [x, y] = toMini(o.x, o.z); m.beginPath(); m.arc(x, y, Math.max(1.2, o.r / world.map.w * MW), 0, 7); m.fill();
+    const bg = world.terrain?.minimap;
+    if (bg) { m.imageSmoothingEnabled = true; m.drawImage(bg, 0, 0, MW, MH); }
+    else {
+      m.fillStyle = '#7a5434'; m.fillRect(0, 0, MW, MH);
+      m.fillStyle = '#5d6066';
+      for (const o of world.obstacles || []) { const [x, y] = toMini(o.x, o.z); m.beginPath(); m.arc(x, y, Math.max(1.2, o.r / world.map.w * MW), 0, 7); m.fill(); }
     }
-    const surv = !!(world.ui.surveillance || world.ui.surveillanceBy?.[0]);
+    const fog = world.fog, fogOn = !!(fog?.enabled && fog.cols);
+    if (fogOn) { fogLayer(fog); m.imageSmoothingEnabled = true; m.drawImage(fogC, 0, 0, MW, MH); }
+    // ghosts: remember enemy buildings while seen; drop when their spot is visible and they're gone
+    const alive = new Set();
     for (const e of world.entities) {
+      if (e.team > 0 && e.cls === 'bld' && e.kind !== 'wall' && e.state !== 'dead') {
+        alive.add(e.id);
+        if (!e.hidden) ghosts.set(e.id, { x: e.x, z: e.z, r: e.r || 3, team: e.team });
+      }
+    }
+    for (const [id, g] of ghosts) if (!alive.has(id) && (!fogOn || fogVisibleAt(fog, g.x, g.z))) ghosts.delete(id);
+    if (fogOn) for (const [id, g] of ghosts) {
+      const e = world.entities.find((q) => q.id === id);
+      if (e && !e.hidden) continue;
+      const [x, y] = toMini(g.x, g.z), s = Math.max(3, g.r / world.map.w * MW * 1.8);
+      m.strokeStyle = hex(world.colors[g.team] ?? 0xcccccc); m.globalAlpha = 0.75; m.lineWidth = 1;
+      m.strokeRect(x - s / 2, y - s / 2, s, s); m.globalAlpha = 1;
+    }
+    for (const e of world.entities) {
+      if (e.hidden || e.state === 'dead') continue;
       const [x, y] = toMini(e.x, e.z);
-      if (e.kind === 'crystal') { m.fillStyle = '#4fe6ff'; m.fillRect(x - 1, y - 1, 2, 2); continue; }
-      if (e.team === 1 && e.cls !== 'bld' && !surv) continue;
+      if (e.kind === 'crystal') { m.fillStyle = '#4fe6ff'; m.fillRect(x - 0.8, y - 0.8, 1.6, 1.6); continue; }
+      if (e.team < 0) continue;
       m.fillStyle = hex(world.colors[e.team] ?? 0xcccccc);
       if (e.cls === 'bld') {
-        const s = e.kind === 'wall' ? 1.6 : Math.max(2.5, (e.r || 2) / world.map.w * MW * 1.6);
+        const s = e.kind === 'wall' ? 1.2 : Math.max(2.6, (e.r || 2) / world.map.w * MW * 1.8);
         m.fillRect(x - s / 2, y - s / 2, s, s);
+        if (e.kind === 'cc') { m.strokeStyle = 'rgba(0,0,0,0.7)'; m.lineWidth = 0.6; m.strokeRect(x - s / 2, y - s / 2, s, s); }
       } else {
-        m.beginPath(); m.arc(x, y, world.input.selected.has(e) ? 1.8 : 1.3, 0, 7); m.fill();
-        if (world.input.selected.has(e)) { m.strokeStyle = '#fff'; m.lineWidth = 0.6; m.stroke(); }
+        const sel = world.input.selected.has(e);
+        m.beginPath(); m.arc(x, y, sel ? 1.6 : 1.1, 0, 7); m.fill();
+        if (sel) { m.strokeStyle = '#fff'; m.lineWidth = 0.6; m.stroke(); }
       }
     }
     const vc = world.viewCorners?.();
     if (vc) {
       m.strokeStyle = 'rgba(255,255,255,0.9)'; m.lineWidth = 1; m.beginPath();
-      vc.forEach((c, i) => { const [x, y] = toMini(c.x, c.z); i ? m.lineTo(x, y) : m.moveTo(x, y); });
+      vc.forEach((c, i) => { const [x, y] = toMini(Math.max(-world.map.w, Math.min(world.map.w, c.x)), Math.max(-world.map.h, Math.min(world.map.h, c.z))); i ? m.lineTo(x, y) : m.moveTo(x, y); });
       m.closePath(); m.stroke();
     }
   }
@@ -196,6 +238,7 @@ export function createHud(world, sim) {
     setText(q('phaseTxt'), night ? 'Night' : 'Day');
     setText(btnView, VIEW_LABEL[world.view] || world.view);
     setText(btnSpeed, (world.clock.speed >= 2 ? 2 : 1) + 'x');
+    setText(btnFog, world.fog?.enabled === false ? 'Fog: Off' : 'Fog: On');
 
     // banner
     if (ui.message && ui.message !== lastUiMsg) { lastUiMsg = ui.message; uiUntil = now + 2600; }

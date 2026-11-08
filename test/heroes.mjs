@@ -40,8 +40,23 @@ const heroes = await page.evaluate(() => window.world.heroes.list().map(h => ({ 
 console.log(JSON.stringify(heroes));
 check(heroes.length === nTeams && heroes.every(h => h.kind === 'hero' && h.isUnit && h.stats), 'all heroes trained as hero units');
 
+// centre the low camera on (x, z) at a zoom factor (relative to default)
+const frame = (x, z, zf = 1) => page.evaluate(({ x, z, zf }) => {
+  const w = window.world; w.input.selected.clear(); w.setView('low');
+  w.__z0 ??= w.views?.low?.zoom; if (w.views?.low && w.__z0) { w.views.low.min = Math.min(w.views.low.min, w.__z0 * zf); w.views.low.zoom = w.__z0 * zf; w.zoomBy(1); }
+  w.jumpTo(x, z);
+  for (let i = 0; i < 3; i++) { const { w: W, h: H } = w.size(); const c = w.groundAt(W / 2, H * 0.6); if (!c) break; w.jumpTo(w.camTarget.x + x - c.x, w.camTarget.z + z - c.z); }
+}, { x, z, zf });
 const FAC = ['vanguard', 'storm', 'volcanic', 'earth'];
-const SPOT = { vanguard: [-60, 70], storm: [60, 70], volcanic: [-60, -60], earth: [60, -60] };
+const MAP = await page.evaluate(() => window.world.map);
+const SPOT = { vanguard: [-0.1, 0.32], storm: [0.1, 0.32], volcanic: [-0.1, -0.32], earth: [0.1, -0.32] };
+for (const k in SPOT) SPOT[k] = await page.evaluate(([fx, fz]) => { // nearest spot with 14u of clear ground
+  const w = window.world, clear = (x, z) => (w.obstacles || []).every(o => Math.hypot(o.x - x, o.z - z) > o.r + 14) && w.entities.every(e => e.cls !== 'bld' || Math.hypot(e.x - x, e.z - z) > (e.r || 2) + 14);
+  const x0 = fx * w.map.w, z0 = fz * w.map.h;
+  for (let r = 0; r < 60; r += 3) for (let a = 0; a < 6.28; a += 0.4) { const x = x0 + Math.cos(a) * r, z = z0 + Math.sin(a) * r; if (Math.abs(x) < w.map.w / 2 - 15 && Math.abs(z) < w.map.h / 2 - 8 && clear(x, z)) return [x, z]; }
+  return [x0, z0];
+}, SPOT[k]);
+console.log('map', JSON.stringify(MAP));
 for (const fac of FAC) {
   const [sx, sz] = SPOT[fac];
   // stage: hero at spot, 3 enemy wardens 6-9u away, one damaged ally next to the hero; freeze time for a clean setup
@@ -55,30 +70,27 @@ for (const fac of FAC) {
     for (let i = 0; i < 3; i++) { const e = s.spawn('warden', foe, sx + 7 + i * 1.5, sz + (i - 1) * 2.5); e.hp = e.hpMax = 2000; enemies.push(e.id); }
     const ally = s.spawn('warden', h.team, sx - 2.5, sz + 1.5); ally.hp = 30; ally.hpMax = 400;
     h.rot = 0;
-    w.setView('low'); w.jumpTo(sx + 3, sz + 2);
+    w.heroes.state[h.team].cdUntil = 0;
     return { hero: h.id, enemies, ally: ally.id };
   }, { fac, sx, sz });
   if (!setup) { check(false, `${fac} hero exists`); continue; }
-  await page.waitForTimeout(500);
-  await page.screenshot({ path: out(`${fac}-model`) });
-  // close-up of the model
-  await page.evaluate(({ sx, sz }) => { const w = window.world; w.zoomBy(0.35); w.jumpTo(sx, sz + 1); }, { sx, sz });
-  await page.waitForTimeout(500);
+  await frame(sx, sz, 0.3); await page.waitForTimeout(600);
   await page.screenshot({ path: out(`${fac}-close`) });
-  await page.evaluate(({ sx, sz }) => { const w = window.world; w.zoomBy(1 / 0.35); w.jumpTo(sx + 3, sz + 2); }, { sx, sz });
+  await frame(sx + 4, sz, 0.6); await page.waitForTimeout(300);
   const res = await page.evaluate(({ setup }) => {
     const w = window.world, by = (id) => w.entities.find(e => e.id === id);
     const h = by(setup.hero), en = setup.enemies.map(by);
     const before = en.map(e => e.hp);
     let evs = 0; const L = () => evs++; w.bus.addEventListener('ability', L);
     w.clock.speed = 1;
+    w.heroes.state[h.team].cdUntil = 0;
     const ok = w.heroes.cast(h);
     w.bus.removeEventListener('ability', L);
     const t = w.clock.t;
     return { ok, evs, dmg: en.map((e, i) => before[i] - e.hp), status: en.map(e => e.status ? { ...e.status } : null), t,
       heroStatus: h.status ? { ...h.status } : null, targets: en.map(e => e.target === h), cd: w.heroes.state[h.team].cdUntil - t };
   }, { setup });
-  await page.waitForTimeout(fac === 'volcanic' ? 350 : fac === 'earth' ? 450 : 150);
+  await page.waitForTimeout(fac === 'volcanic' ? 350 : fac === 'earth' ? 450 : 30);
   await page.screenshot({ path: out(fac) });
   console.log(fac, JSON.stringify(res));
   check(res.ok && res.evs === 1 && res.cd > 10, `${fac}: cast ok, ability event, cooldown set`);

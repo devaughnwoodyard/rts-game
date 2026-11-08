@@ -36,7 +36,7 @@ const STYLE = {
   earth: { // Earth Cult: bark-brown plates, faint gold markings, golden sun visor
     body: hex(0x5a3e26), mid: hex(0x4a3320), light: hex(0x6e5034), rough: 0.8, metal: 0.05,
     trimCol: hex(0xc9a227), trimEm: hex(0xc9a227).multiplyScalar(0.15), visorEm: hex(0xffc84a).multiplyScalar(1.6),
-    glowEm: hex(0xffc84a).multiplyScalar(1.2), gunEm: hex(0x000000), scaleY: 1.25,
+    glowEm: hex(0xffc84a).multiplyScalar(1.2), gunEm: hex(0x000000), scaleY: 1.25, hideGun: true, // crossbow instead
   },
   storm: { // Storm Nomads: bone-white armor, crimson sailcloth, blue-white electric visor
     body: hex(0xe8e2d0), mid: hex(0xcfc7b2), light: hex(0xf4f0e6), rough: 0.6, metal: 0.1,
@@ -56,14 +56,16 @@ function teamMaterial(faction, hero = false) {
     envMapIntensity: 1.0, // lit by scene.environment (engine scales it, see trackEnv)
   });
   const U = { uTrimCol: { value: st.trimCol }, uMid: { value: st.mid }, uLight: { value: st.light }, uTrimEm: { value: st.trimEm },
-    uVisorEm: { value: st.visorEm }, uGlowEm: { value: st.glowEm }, uGunEm: { value: st.gunEm } };
+    uVisorEm: { value: st.visorEm }, uGlowEm: { value: st.glowEm }, uGunEm: { value: st.gunEm },
+    uHideGun: { value: st.hideGun ? 1 : 0 } };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
-    sh.fragmentShader = 'uniform vec3 uTrimCol, uMid, uLight, uTrimEm, uVisorEm, uGlowEm, uGunEm;\n' + sh.fragmentShader
+    sh.fragmentShader = 'uniform vec3 uTrimCol, uMid, uLight, uTrimEm, uVisorEm, uGlowEm, uGunEm;\nuniform float uHideGun;\n' + sh.fragmentShader
       .replace('#include <color_fragment>', `
   float vSum = 3.0; vec3 partEm = vec3(0.0);
   #if defined( USE_COLOR_ALPHA )
     vSum = vColor.r + vColor.g + vColor.b;
+    if ( uHideGun > 0.5 && vColor.a > 0.1 && vColor.a < 0.3 ) discard;   // rifle verts (a=0.2) for non-rifle factions
     if ( vColor.a > 0.9 ) {
       if ( vColor.r > 0.9 ) diffuseColor.rgb = diffuseColor.rgb;          // body: faction colour
       else if ( vColor.r > 0.72 ) diffuseColor.rgb = uMid;                // mid plates
@@ -104,8 +106,9 @@ function buildAttachments() {
     const out = new THREE.BufferGeometry();
     out.setAttribute('position', new THREE.BufferAttribute(pos, 3)); out.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
     out.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    out.applyMatrix4(rest['mixamorig' + bone]); out.computeBoundingSphere();
-    out.userData.bone = 'mixamorig' + bone;
+    if (bone === 'gunMount') out.userData.bone = 'gunMount'; // authored directly in the mount frame
+    else { out.applyMatrix4(rest['mixamorig' + bone]); out.userData.bone = 'mixamorig' + bone; }
+    out.computeBoundingSphere();
     return out;
   };
   const IRON = 0x2a2420, IRON2 = 0x3b322c, ASH = 0x6a2a20, ASH2 = 0x4e1f19;
@@ -134,7 +137,16 @@ function buildAttachments() {
   };
   // Earth Cult: leafy shoulder mantle; Storm Nomads: crimson sailcloth wraps over shoulders + hanging tails
   const LEAF = [0x3f6b2a, 0x4f7f32, 0x35592a];
-  const mantle = []; for (let i = 0; i < 9; i++) { const a = (i / 8 - 0.5) * 2.6; mantle.push(put(new THREE.ConeGeometry(7, 14, 4), S2, [Math.sin(a) * 22, 18 - Math.abs(a) * 3, Math.cos(a) * 6 - 6], [Math.PI / 2 + 0.6, 0, -a * 0.6], LEAF[i % 3])); }
+  const mantle = [];
+  for (let i = 0; i < 12; i++) { // leaf shingles draped over both shoulders and the upper back
+    const x = (i % 6 / 5 - 0.5) * 50, row = i < 6 ? 0 : 1, sx = Math.sign(x) || 1;
+    const g = new THREE.ConeGeometry(8.5, 18, 4); g.scale(1, 1, 0.35);
+    mantle.push(put(g, S2, [x, 31 - Math.abs(x) * 0.18 - row * 5, row ? -16 : 2], [row ? 0.9 : -0.5, 0, -sx * (0.7 + Math.abs(x) * 0.02)], LEAF[i % 3]));
+  }
+  for (let i = 0; i < 9; i++) { // leafy cloak hanging over the back pack
+    const g = new THREE.ConeGeometry(9, 22, 4); g.scale(1, 1, 0.3);
+    mantle.push(put(g, S2, [((i % 3) - 1) * 13, 22 - Math.floor(i / 3) * 13, -33 - Math.floor(i / 3) * 1.5], [Math.PI + 0.15, 0, ((i % 3) - 1) * 0.25], LEAF[(i + 1) % 3]));
+  }
   attach.earth = { cape: merge(mantle, 'Spine2'), glow: merge([put(new THREE.BoxGeometry(22, 3.5, 2), H, [0, 11, 15.4], [0, 0, 0], 0xffc84a)], 'Head') };
   const CR = 0x8c1c1c, CR2 = 0x6e1616;
   attach.storm = {
@@ -142,6 +154,32 @@ function buildAttachments() {
     head: merge([put(new THREE.TorusGeometry(15, 3, 6, 14), H, [0, 3, 0], [Math.PI / 2, 0, 0], CR)], 'Head'),
     glow: merge([put(new THREE.BoxGeometry(22, 3, 2), H, [0, 11, 15.4], [0, 0, 0], 0xbfe4ff)], 'Head'),
   };
+  // ---- weapons / exo parts. gunMount frame: +Z muzzle, +Y up, origin at the grip (cm)
+  const O = new THREE.Vector3(), HIP = P('Hips');
+  const WOOD = 0x5a3e26, WOOD2 = 0x3e2a19, GOLD = 0xc9a227, BONE = 0xd8c7a0, STEEL = 0x8a9099, DARKM = 0x2a2d31;
+  attach.earth.more = [
+    [merge([put(new THREE.BoxGeometry(5, 6, 38), O, [0, 1, 8], [0, 0, 0], WOOD),                       // crossbow stock
+      ...[-1, 1].map((sx) => put(new THREE.BoxGeometry(30, 3, 3.5), O, [sx * 14, 3, 31], [0, sx * 0.35, 0], WOOD2)), // limbs
+      ...[-1, 1].map((sx) => put(new THREE.BoxGeometry(3, 4, 4), O, [sx * 28, 3, 26], [0, 0, 0], GOLD)),
+      put(new THREE.BoxGeometry(55, 0.8, 0.8), O, [0, 3, 24], [0, 0, 0], 0xd0c8b0),                      // string
+      put(new THREE.CylinderGeometry(0.9, 0.9, 30, 5), O, [0, 5, 22], [Math.PI / 2, 0, 0], BONE)], 'gunMount'), 'dark'],
+  ];
+  attach.storm.more = [
+    [merge([put(new THREE.CylinderGeometry(1.7, 1.7, 30, 6), HIP, [-20, -12, 5], [0, 0, 0.12], DARKM),   // shock hammer on right hip
+      put(new THREE.BoxGeometry(9, 9, 13), HIP, [-22, -29, 5], [0, 0, 0.12], STEEL)], 'Hips'), 'dark'],
+    [merge([put(new THREE.BoxGeometry(9.6, 2.4, 13.6), HIP, [-22, -29, 5], [0, 0, 0.12], 0xbfe4ff)], 'Hips'), 'glow'],
+  ];
+  attach.volcanic.more = [
+    [merge([put(new THREE.CylinderGeometry(1.6, 1.6, 11, 6), HIP, [20, 2, 4], [0, 0, -0.12], IRON2),    // hip blade hilt + guard
+      put(new THREE.BoxGeometry(9, 1.8, 4), HIP, [20.5, -4, 4], [0, 0, -0.12], IRON)], 'Hips'), 'dark'],
+    [merge([put(new THREE.BoxGeometry(1.8, 28, 5.5), HIP, [22.5, -19, 4], [0, 0, -0.12], 0xff6a1a)], 'Hips'), 'glow'],
+  ];
+  attach.vanguard.more = ['Left', 'Right'].map((sd) => { // exo leg pistons
+    const sx = sd === 'Left' ? 1 : -1, U = P(sd + 'UpLeg');
+    return [merge([put(new THREE.CylinderGeometry(1.5, 1.5, 34, 6), U, [sx * 12.5, -22, -3], [0, 0, 0], STEEL),
+      put(new THREE.CylinderGeometry(2.6, 2.6, 12, 6), U, [sx * 12.5, -9, -3], [0, 0, 0], DARKM),
+      put(new THREE.BoxGeometry(5, 2.5, 5), U, [sx * 12.5, -2, -3], [0, 0, 0], 0xe0b020)], sd + 'UpLeg'), 'dark'];
+  });
   attachMats.dark = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
   attachMats.glow1 = new THREE.MeshBasicMaterial({ color: hex(0xff6a1a).multiplyScalar(1.6), toneMapped: true });
   attachMats.glow0 = new THREE.MeshBasicMaterial({ vertexColors: true, color: hex(0xffffff).multiplyScalar(1.5) });
@@ -160,6 +198,7 @@ export function attachFactionProps(body, faction, { hero = false, leader = false
   add(leader && set.headLeader ? set.headLeader : set.head, attachMats.dark);
   add(set.cape, attachMats.dark);
   add(set.glow, faction === 'volcanic' ? attachMats.glow1 : hero ? attachMats.glowHero : attachMats.glow0);
+  for (const [geo, kind] of set.more || []) add(geo, kind === 'glow' ? (hero ? attachMats.glowHero : attachMats.glow0) : attachMats.dark);
 }
 
 // Loads the GLB once. Resolves to true on success; throws on failure (engine falls back to primitives).

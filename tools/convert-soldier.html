@@ -156,7 +156,7 @@ window.convert = async () => {
   rig.updateMatrixWorld(true);
   const rifleRest = rh.matrixWorld.clone().multiply(rifleInHand);
   const rifleParts = [];
-  const rp = (g, x, y, z, col, rot) => { if (rot) g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rot))); g.translate(x, y, z); g.applyMatrix4(rifleRest); rifleParts.push(finish(g, 'RightHand', col)); };
+  const rp = (g, x, y, z, col, rot) => { if (rot) g.applyMatrix4(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(...rot))); g.translate(x, y, z); g.applyMatrix4(rifleRest); rifleParts.push(finish(g, 'RightHand', [col[0], col[1], col[2], 0.2])); }; // a=0.2 marks rifle verts (runtime can hide them)
   rp(RB(7, 11, 42, 1.5), 0, 2, 10, C.gun);                      // receiver (from stock to fore-grip)
   rp(RB(6, 9, 16, 1.5), 0, 0.5, -15, C.gun);                     // stock
   rp(RB(7.5, 4, 24, 1), 0, 9, 12, C.teamDk);                   // top rail / team stripe
@@ -201,6 +201,10 @@ window.convert = async () => {
   // fire aim direction relative to facing, for the engine (rifle muzzle in world at the fire pose)
   log.push('aim yaw deg (0 = +Z) ' + (Math.atan2(aimW.x, aimW.z) * 180 / Math.PI).toFixed(1));
 
+  // weapon mount: empty node in the right hand at the rifle frame (+Z muzzle, +Y up, cm) for runtime weapons
+  const mount = new THREE.Object3D(); mount.name = 'gunMount';
+  rifleInHand.decompose(mount.position, mount.quaternion, mount.scale);
+  rh.add(mount);
   const exporter = new GLTFExporter();
   const glb = await exporter.parseAsync(rig, { binary: true, animations: clips, onlyVisible: false });
   const bytes = new Uint8Array(glb);

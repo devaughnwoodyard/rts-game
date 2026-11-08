@@ -34,177 +34,233 @@ const D = Math.PI / 180;
 // who: 'enemies'(default)|'allies'|'alliesAir'|'self'. ai: autocast heuristic (see aiPick).
 export const ABILITIES = {
   // ======================= VANGUARD (industrial: fortification + area denial, mini-missiles)
-  vg_frag: { name: 'Frag Grenade', type: 'active', target: 'point', range: 12, cd: 14, auto: true, kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 3.5, amt: 70 }], desc: 'Lob a grenade: 70 dmg in r3.5.' },
-  vg_digin: { name: 'Dig In', type: 'active', target: 'self', cd: 20, ai: 'combat', kind: 'buff',
-    fx: [{ t: 'buff', who: 'self', dur: 6, root: true, dmgMul: 0.6, rangeAdd: 3 }], desc: 'Entrench 6s: rooted, -40% dmg taken, +3 range.' },
+  vg_frag: { name: 'Frag Grenade', type: 'active', target: 'point', range: 12, cd: 16, auto: true, kind: 'aoe',
+    fx: [{ t: 'damage', shape: 'aoe', r: 3.5, amt: 30 }] },
+  vg_digin: { name: 'Dig In', type: 'active', target: 'self', cd: 24, ai: 'combat', kind: 'buff',
+    fx: [{ t: 'buff', who: 'self', dur: 6, root: true, dmgMul: 0.7, rangeAdd: 3 }] },
   vg_flare: { name: 'Flare', type: 'active', target: 'point', range: 24, cd: 25, ai: 'reveal', kind: 'reveal',
-    fx: [{ t: 'reveal', r: 14, dur: 8, detect: true }], desc: 'Reveal r14 for 8s, exposing burrowed units and mines.' },
+    fx: [{ t: 'reveal', r: 14, dur: 8, detect: true }] },
   vg_brace: { name: 'Brace', type: 'passive', mods: { still: { after: 1.5, armorAdd: 0.15 } }, desc: '+15% armor after standing still 1.5s.' },
-  vg_smoke: { name: 'Smoke Screen', type: 'active', target: 'self', cd: 20, ai: 'combat', min: 2, auto: true, kind: 'shield',
-    fx: [{ t: 'buff', who: 'allies', r: 8, dur: 4, dmgMul: 0.6 }], desc: 'Allies in r8 take -40% dmg for 4s.' },
+  vg_smoke: { name: 'Smoke Screen', type: 'active', target: 'self', cd: 24, ai: 'combat', min: 2, auto: true, kind: 'shield',
+    fx: [{ t: 'buff', who: 'allies', r: 8, dur: 4, dmgMul: 0.7 }] },
   vg_ram: { name: 'Ram', type: 'active', target: 'unit', range: 12, cd: 14, kind: 'dash',
-    fx: [{ t: 'dash', to: 'target', hit: { amt: 60, r: 2.5, knock: 4, stun: 0.5 } }], desc: 'Charge a target: 60 dmg, knockback, 0.5s stun.' },
+    fx: [{ t: 'dash', to: 'target', hit: { amt: 40, r: 2.5, knock: 4, stun: 0.5 } }] },
   vg_overdrive: { name: 'Overdrive', type: 'active', target: 'self', cd: 18, ai: 'engage', kind: 'speed',
-    fx: [{ t: 'buff', who: 'self', dur: 5, speedMul: 1.5 }], desc: '+50% speed for 5s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 5, speedMul: 1.5 }] },
   vg_repairrig: { name: 'Repair Rig', type: 'passive', mods: { aura: { r: 8, who: 'allies', cls: 'veh', hps: 3 } }, desc: 'Nearby allied vehicles regenerate 3 hp/s.' },
-  vg_hullbrace: { name: 'Brace Hull', type: 'active', target: 'self', cd: 22, ai: 'combat', aiR: 13, kind: 'buff',
-    fx: [{ t: 'buff', who: 'self', dur: 8, root: true, dmgMul: 0.6, rangeAdd: 3 }], desc: 'Lock tracks 8s: rooted, -40% dmg taken, +3 range.' },
+  vg_hullbrace: { name: 'Brace Hull', type: 'active', target: 'self', cd: 24, ai: 'combat', aiR: 13, kind: 'buff',
+    fx: [{ t: 'buff', who: 'self', dur: 8, root: true, dmgMul: 0.7, rangeAdd: 3 }] },
   vg_apslug: { name: 'AP Slug', type: 'active', target: 'unit', range: 15, cd: 14, auto: true, prefer: 'veh', kind: 'single',
-    fx: [{ t: 'damage', shape: 'single', amt: 150 }, { t: 'stun', shape: 'single', dur: 0.5 }], desc: 'Armor-piercing shot: 150 dmg + 0.5s stun.' },
+    fx: [{ t: 'damage', shape: 'single', amt: 100 }, { t: 'stun', shape: 'single', dur: 0.4 }] },
   vg_plating: { name: 'Composite Plating', type: 'passive', mods: {}, desc: 'Static: +10% armor (included in stats).' },
   vg_spotter: { name: 'Spotter Link', type: 'passive', mods: { near: { r: 10, cls: 'inf', rangeAdd: 2 } }, desc: '+2 range while allied infantry are within 10.' },
   vg_hv_plating: { name: 'Emergency Plating', type: 'active', target: 'self', cd: 30, ai: 'hurt', auto: true, kind: 'shield',
-    fx: [{ t: 'buff', who: 'self', dur: 5, dmgMul: 0.35 }], desc: '-65% dmg taken for 5s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 5, dmgMul: 0.35 }] },
   vg_hv_boost: { name: 'Afterburner', type: 'active', target: 'self', cd: 24, ai: 'hurt', auto: true, kind: 'speed',
-    fx: [{ t: 'buff', who: 'self', dur: 4, speedMul: 1.6 }], desc: '+60% speed for 4s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 4, speedMul: 1.6 }] },
   vg_hv_beacon: { name: 'Distress Beacon', type: 'active', target: 'self', cd: 40, ai: 'hurt', kind: 'reveal',
-    fx: [{ t: 'reveal', r: 20, dur: 6, detect: true }, { t: 'buff', who: 'allies', r: 16, dur: 4, speedMul: 1.3 }], desc: 'Reveal r20; nearby allies +30% speed.' },
+    fx: [{ t: 'reveal', r: 20, dur: 6, detect: true }, { t: 'buff', who: 'allies', r: 16, dur: 4, speedMul: 1.3 }] },
   vg_hv_frame: { name: 'Reinforced Frame', type: 'passive', mods: { regen: { hps: 3, ooc: 6 } }, desc: 'Regenerate 3 hp/s out of combat.' },
-  vg_minefield: { name: 'Lay Minefield', type: 'active', target: 'point', range: 10, cd: 25, ai: 'mines', auto: true, kind: 'mines',
-    fx: [{ t: 'mines', n: 6, r: 6, amt: 160, slow: 0.6, slowDur: 2 }], desc: 'Bury 6 hidden mines in r6 (160 dmg + slow each). Cap 30.' },
-  vg_claymore: { name: 'Claymore', type: 'active', target: 'point', range: 8, cd: 18, ai: 'claymore', auto: true, kind: 'claymore',
-    fx: [{ t: 'claymore', len: 8, arc: 70, amt: 130, trig: 6 }], desc: 'Plant a directional trap: 130 dmg cone when enemies walk in.' },
+  vg_minefield: { name: 'Lay Minefield', type: 'active', target: 'point', range: 10, cd: 30, ai: 'mines', auto: true, kind: 'mines',
+    fx: [{ t: 'mines', n: 6, r: 6, amt: 160, slow: 0.6, slowDur: 2 }] },
+  vg_claymore: { name: 'Claymore', type: 'active', target: 'point', range: 8, cd: 20, ai: 'claymore', auto: true, kind: 'claymore',
+    fx: [{ t: 'claymore', len: 8, arc: 70, amt: 80, trig: 6 }] },
   vg_demo: { name: 'Demolition Charge', type: 'active', target: 'point', range: 6, cd: 30, ai: 'demo', kind: 'demo',
-    fx: [{ t: 'charge', delay: 3, r: 4, amt: 250, bld: 3 }], desc: 'Timed charge (3s): 250 dmg r4, x3 vs buildings.' },
+    fx: [{ t: 'charge', delay: 3, r: 4, amt: 120, bld: 3 }] },
   vg_minesweep: { name: 'Mine Sweep', type: 'passive', mods: { detect: 16 }, desc: 'Detects enemy mines and burrowed units within 16.' },
-  vg_flakburst: { name: 'Flak Burst', type: 'active', target: 'point', range: 18, cd: 10, auto: true, air: 'air', kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 5, amt: 120, air: 'air' }], desc: '120 dmg to air units in r5.' },
+  vg_flakburst: { name: 'Flak Burst', type: 'active', target: 'point', range: 18, cd: 12, auto: true, air: 'air', kind: 'aoe',
+    fx: [{ t: 'damage', shape: 'aoe', r: 4, amt: 70, air: 'air' }] },
   vg_radar: { name: 'Radar Sweep', type: 'active', target: 'self', cd: 30, ai: 'reveal', kind: 'reveal',
-    fx: [{ t: 'reveal', r: 40, dur: 8, detect: true }], desc: 'Reveal and detect r40 for 8s.' },
+    fx: [{ t: 'reveal', r: 40, dur: 8, detect: true }] },
   vg_struts: { name: 'Deploy Struts', type: 'active', target: 'self', cd: 20, ai: 'deploy', kind: 'buff',
-    fx: [{ t: 'buff', who: 'self', dur: 8, root: true, rangeAdd: 6, dpsMul: 1.3 }], desc: 'Deploy 8s: rooted, +6 range, +30% dps.' },
+    fx: [{ t: 'buff', who: 'self', dur: 8, root: true, rangeAdd: 6, dpsMul: 1.3 }] },
   vg_tracking: { name: 'Tracking Radar', type: 'passive', mods: { detect: 14 }, desc: 'Detects hidden units within 14.' },
 
   // ======================= VOLCANIC (sturdy, burn, molten regen; iron-ball artillery)
   vc_flameburst: { name: 'Flame Burst', type: 'active', target: 'point', range: 7, cd: 10, auto: true, kind: 'cone',
-    fx: [{ t: 'damage', shape: 'cone', len: 7, arc: 70, amt: 45 }, { t: 'dot', shape: 'cone', len: 7, arc: 70, dps: 10, dur: 4 }], desc: 'Cone of fire: 45 dmg + burn.' },
+    fx: [{ t: 'damage', shape: 'cone', len: 7, arc: 70, amt: 20 }, { t: 'dot', shape: 'cone', len: 7, arc: 70, dps: 5, dur: 3 }] },
   vc_emberrush: { name: 'Ember Rush', type: 'active', target: 'unit', range: 10, cd: 12, kind: 'dash',
-    fx: [{ t: 'dash', to: 'target', hit: { amt: 30, r: 2 } }], desc: 'Dash to a target.' },
+    fx: [{ t: 'dash', to: 'target', hit: { amt: 20, r: 2 } }] },
   vc_ignite: { name: 'Ignite', type: 'passive', mods: { onHit: { dot: { dps: 3, dur: 3 } } }, desc: 'Attacks burn: 3 dps for 3s.' },
   vc_moltenskin: { name: 'Molten Skin', type: 'passive', mods: { regen: { hps: 4, ooc: 4 } }, desc: 'Regenerate 4 hp/s out of combat.' },
   vc_napalm: { name: 'Napalm Sweep', type: 'active', target: 'point', range: 9, cd: 12, auto: true, kind: 'cone',
-    fx: [{ t: 'dot', shape: 'cone', len: 9, arc: 60, dps: 25, dur: 3 }], desc: 'Douse a cone: 25 dps burn for 3s.' },
-  vc_oilslick: { name: 'Oil Slick', type: 'active', target: 'point', range: 12, cd: 18, auto: true, kind: 'zone',
-    fx: [{ t: 'zone', zk: 'oil', r: 5, dur: 5, dps: 8, slow: 0.5 }], desc: 'Burning oil r5 5s: slow 50% + 8 dps.' },
+    fx: [{ t: 'dot', shape: 'cone', len: 9, arc: 60, dps: 8, dur: 3 }] },
+  vc_oilslick: { name: 'Oil Slick', type: 'active', target: 'point', range: 12, cd: 22, auto: true, kind: 'zone',
+    fx: [{ t: 'zone', zk: 'oil', r: 5, dur: 5, dps: 5, slow: 0.6 }] },
   vc_heathaze: { name: 'Heat Haze', type: 'active', target: 'self', cd: 20, ai: 'combat', kind: 'shield',
-    fx: [{ t: 'buff', who: 'self', dur: 4, dmgMul: 0.7, speedMul: 1.3 }], desc: '-30% dmg taken, +30% speed for 4s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 4, dmgMul: 0.7, speedMul: 1.3 }] },
   vc_magmacoat: { name: 'Magma Coat', type: 'passive', mods: { onHit: { dot: { dps: 6, dur: 3 } }, regen: { hps: 6, ooc: 5 }, thorns: { r: 4, dps: 6, dur: 2 } },
     desc: 'Static 45% armor (in stats). Attacks burn; melee attackers burn; molten regen 6 hp/s out of combat.' },
   vc_moltenram: { name: 'Molten Ram', type: 'active', target: 'unit', range: 14, cd: 16, auto: true, kind: 'dash',
-    fx: [{ t: 'dash', to: 'target', hit: { amt: 120, r: 3, knock: 5, stun: 0.8 } }], desc: 'Charge: 120 dmg r3, knockback, 0.8s stun.' },
+    fx: [{ t: 'dash', to: 'target', hit: { amt: 70, r: 3, knock: 4, stun: 0.6 } }] },
   vc_slagspray: { name: 'Slag Spray', type: 'active', target: 'point', range: 8, cd: 12, auto: true, kind: 'cone',
-    fx: [{ t: 'damage', shape: 'cone', len: 8, arc: 80, amt: 60 }, { t: 'dot', shape: 'cone', len: 8, arc: 80, dps: 15, dur: 4 }], desc: 'Cone: 60 dmg + 15 dps burn 4s.' },
-  vc_crust: { name: 'Hardened Crust', type: 'active', target: 'self', cd: 24, ai: 'combat', aiR: 12, auto: true, kind: 'buff',
-    fx: [{ t: 'buff', who: 'self', dur: 5, armorAdd: 0.3, stunImmune: true }], desc: '+30% armor and stun immunity for 5s.' },
+    fx: [{ t: 'damage', shape: 'cone', len: 8, arc: 80, amt: 20 }, { t: 'dot', shape: 'cone', len: 8, arc: 80, dps: 5, dur: 4 }] },
+  vc_crust: { name: 'Hardened Crust', type: 'active', target: 'self', cd: 28, ai: 'combat', aiR: 12, auto: true, kind: 'buff',
+    fx: [{ t: 'buff', who: 'self', dur: 5, armorAdd: 0.2, stunImmune: true }] },
   vc_hv_vent: { name: 'Magma Vent', type: 'active', target: 'self', cd: 20, ai: 'aoe', min: 1, auto: true, kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 6, amt: 40 }, { t: 'dot', shape: 'aoe', r: 6, dps: 10, dur: 4 }], desc: 'Vent magma r6: 40 dmg + burn.' },
+    fx: [{ t: 'damage', shape: 'aoe', r: 6, amt: 40 }, { t: 'dot', shape: 'aoe', r: 6, dps: 10, dur: 4 }] },
   vc_hv_harden: { name: 'Harden', type: 'active', target: 'self', cd: 25, ai: 'hurt', auto: true, kind: 'buff',
-    fx: [{ t: 'buff', who: 'self', dur: 6, armorAdd: 0.3 }], desc: '+30% armor for 6s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 6, armorAdd: 0.3 }] },
   vc_hv_lavatrail: { name: 'Lava Trail', type: 'active', target: 'self', cd: 25, ai: 'hurt', auto: true, kind: 'speed',
-    fx: [{ t: 'buff', who: 'self', dur: 5, speedMul: 1.5 }], desc: '+50% speed for 5s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 5, speedMul: 1.5 }] },
   vc_slagshell: { name: 'Slag Shell', type: 'active', target: 'point', range: 26, cd: 16, auto: true, kind: 'ironball',
-    fx: [{ t: 'damage', shape: 'aoe', r: 6, amt: 120 }, { t: 'zone', zk: 'slag', r: 5, dur: 5, dps: 20 }], desc: 'Huge molten iron ball: 120 dmg r6 + burning slag 5s.' },
+    fx: [{ t: 'damage', shape: 'aoe', r: 6, amt: 30 }, { t: 'zone', zk: 'slag', r: 4, dur: 5, dps: 8 }] },
   vc_ricochet: { name: 'Ricochet Shot', type: 'active', target: 'point', range: 26, cd: 14, auto: true, kind: 'ironball',
-    fx: [{ t: 'damage', shape: 'aoe', r: 4, amt: 80 }, { t: 'damage', shape: 'aoe', r: 4, amt: 60, at: 'beyond', off: 8 }], desc: 'Iron ball bounces: 80 dmg r4, then 60 dmg 8u further.' },
+    fx: [{ t: 'damage', shape: 'aoe', r: 4, amt: 25 }, { t: 'damage', shape: 'aoe', r: 4, amt: 20, at: 'beyond', off: 8 }] },
   vc_bracing: { name: 'Bracing', type: 'passive', mods: { still: { after: 3, rangeAdd: 5 } }, desc: '+5 range after standing still 3s.' },
   vc_redhot: { name: 'Red-Hot Load', type: 'active', target: 'self', cd: 20, ai: 'combat', aiR: 26, auto: true, kind: 'buff',
-    fx: [{ t: 'charges', n: 3, mul: 1.5, dot: { dps: 8, dur: 3 } }], desc: 'Next 3 shots +50% dmg and set fire.' },
+    fx: [{ t: 'charges', n: 3, mul: 1.5, dot: { dps: 5, dur: 3 } }] },
   vc_ashcloud: { name: 'Ash Cloud', type: 'active', target: 'point', range: 18, cd: 16, auto: true, air: 'air', kind: 'zone',
-    fx: [{ t: 'zone', zk: 'ash', r: 6, dur: 5, dps: 25, slow: 0.6, air: 'air' }], desc: 'Ash cloud r6 5s: 25 dps + slow to air.' },
-  vc_shrapnel: { name: 'Pumice Shrapnel', type: 'active', target: 'point', range: 16, cd: 12, auto: true, air: 'both', kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 4, amt: 90, air: 'both' }], desc: '90 dmg r4 (air and ground).' },
+    fx: [{ t: 'zone', zk: 'ash', r: 6, dur: 5, dps: 18, slow: 0.6, air: 'air' }] },
+  vc_shrapnel: { name: 'Pumice Shrapnel', type: 'active', target: 'point', range: 16, cd: 12, auto: true, air: 'air', kind: 'aoe',
+    fx: [{ t: 'damage', shape: 'aoe', r: 4, amt: 60, air: 'air' }] },
   vc_anchor: { name: 'Anchor Spikes', type: 'active', target: 'self', cd: 22, ai: 'deploy', kind: 'buff',
-    fx: [{ t: 'buff', who: 'self', dur: 8, root: true, rangeAdd: 4, dpsMul: 1.4 }], desc: 'Anchor 8s: rooted, +4 range, +40% dps.' },
+    fx: [{ t: 'buff', who: 'self', dur: 8, root: true, rangeAdd: 4, dpsMul: 1.4 }] },
 
   // ======================= EARTH (air, burrower, healing, water)
-  ea_mend: { name: 'Mend', type: 'active', target: 'ally', range: 12, cd: 12, ai: 'alliesHurt', auto: true, kind: 'heal',
-    fx: [{ t: 'heal', r: 6, amt: 60, over: 3 }], desc: 'Heal allies in r6 for 60 over 3s.' },
+  ea_mend: { name: 'Mend', type: 'active', target: 'ally', range: 12, cd: 14, ai: 'alliesHurt', auto: true, kind: 'heal',
+    fx: [{ t: 'heal', r: 6, amt: 35, over: 3 }] },
   ea_monsoon: { name: 'Monsoon', type: 'active', target: 'point', range: 18, cd: 45, min: 3, auto: true, kind: 'rain',
-    fx: [{ t: 'zone', zk: 'rain', r: 14, dur: 8, slow: 0.6, rangeMul: 0.8 }], desc: 'Downpour r14 8s: enemy ground units -40% speed, -20% range. No effect on air.' },
+    fx: [{ t: 'zone', zk: 'rain', r: 14, dur: 8, slow: 0.6, rangeMul: 0.8 }] },
   ea_photosynth: { name: 'Photosynthesis', type: 'passive', mods: { regen: { hps: 3, ooc: 4 } }, desc: 'Regenerate 3 hp/s out of combat.' },
   ea_thornshot: { name: 'Thorn Arrows', type: 'passive', mods: { onHit: { slow: { mul: 0.85, dur: 1.5 } } }, desc: 'Arrows slow 15% for 1.5s.' },
   ea_pounce: { name: 'Pounce', type: 'active', target: 'unit', range: 12, cd: 12, auto: true, kind: 'dash',
-    fx: [{ t: 'dash', to: 'target', hit: { amt: 45, r: 2, stun: 0.8 } }], desc: 'Leap on a target: 45 dmg + 0.8s stun.' },
-  ea_piercespear: { name: 'Piercing Spear', type: 'active', target: 'point', range: 18, cd: 10, auto: true, kind: 'line',
-    fx: [{ t: 'damage', shape: 'line', len: 18, w: 2, amt: 70 }], desc: 'Hurl a spear that pierces a line: 70 dmg each.' },
+    fx: [{ t: 'dash', to: 'target', hit: { amt: 30, r: 2, stun: 0.5 } }] },
+  ea_piercespear: { name: 'Piercing Spear', type: 'active', target: 'point', range: 18, cd: 12, auto: true, kind: 'line',
+    fx: [{ t: 'damage', shape: 'line', len: 18, w: 2, amt: 30 }] },
   ea_flashflood: { name: 'Flash Flood', type: 'active', target: 'point', range: 16, cd: 35, min: 3, auto: true, kind: 'flood',
     fx: [{ t: 'damage', shape: 'line', len: 16, w: 4, amt: 20 }, { t: 'knock', shape: 'line', len: 16, w: 4, dist: 5 },
          { t: 'slow', shape: 'line', len: 16, w: 4, mul: 0.5, dur: 3 }, { t: 'obstacle', len: 16, dur: 5, r: 2 }],
     desc: 'Wall of rising water: knockback, 50% slow 3s, blocks enemy ground movement 5s.' },
   ea_barkskin: { name: 'Barkskin', type: 'passive', mods: { regen: { hps: 4, ooc: 4 } }, desc: 'Regenerate 4 hp/s out of combat.' },
   ea_solarbeam: { name: 'Solar Beam', type: 'active', target: 'point', range: 20, cd: 14, auto: true, air: 'both', kind: 'line',
-    fx: [{ t: 'damage', shape: 'line', len: 20, w: 3, amt: 110, air: 'both' }], desc: 'Beam: 110 dmg in a line (air and ground).' },
+    fx: [{ t: 'damage', shape: 'line', len: 20, w: 3, amt: 50, air: 'both' }] },
   ea_dive: { name: 'Sun Dive', type: 'active', target: 'unit', range: 14, cd: 16, auto: true, kind: 'dash',
-    fx: [{ t: 'dash', to: 'target', hit: { amt: 80, r: 3, knock: 3 } }], desc: 'Dive: 80 dmg r3 + knockback.' },
+    fx: [{ t: 'dash', to: 'target', hit: { amt: 40, r: 3, knock: 3 } }] },
   ea_plumage: { name: 'Radiant Plumage', type: 'passive', mods: { aura: { r: 12, who: 'allies', hps: 3 } }, desc: 'Allies in r12 regenerate 3 hp/s.' },
-  ea_sunburst: { name: 'Sunburst', type: 'active', target: 'self', cd: 20, ai: 'aoe', min: 2, auto: true, kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 7, amt: 70 }, { t: 'stun', shape: 'aoe', r: 7, dur: 0.6 }], desc: '70 dmg r7 below + 0.6s stun.' },
+  ea_sunburst: { name: 'Sunburst', type: 'active', target: 'self', cd: 22, ai: 'aoe', min: 2, auto: true, kind: 'aoe',
+    fx: [{ t: 'damage', shape: 'aoe', r: 7, amt: 35 }, { t: 'stun', shape: 'aoe', r: 7, dur: 0.5 }] },
   ea_hv_burrow: { name: 'Tunnel Escape', type: 'active', target: 'self', cd: 20, ai: 'hurt', auto: true, req: 'surfaced', kind: 'burrow',
-    fx: [{ t: 'burrow', max: 8 }], desc: 'Burrow for up to 8s.' },
+    fx: [{ t: 'burrow', max: 8 }] },
   ea_hv_surface: { name: 'Surface', type: 'active', target: 'self', cd: 2, ai: 'never', req: 'burrowed', kind: 'surface',
-    fx: [{ t: 'surface' }], desc: 'Return to the surface.' },
+    fx: [{ t: 'surface' }] },
   ea_hv_rootshield: { name: 'Root Shield', type: 'active', target: 'self', cd: 26, ai: 'hurt', auto: true, kind: 'shield',
-    fx: [{ t: 'buff', who: 'self', dur: 5, dmgMul: 0.6 }], desc: '-40% dmg taken for 5s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 5, dmgMul: 0.6 }] },
   ea_burrow: { name: 'Burrow', type: 'active', target: 'self', cd: 3, ai: 'burrowApproach', req: 'surfaced', kind: 'burrow',
-    fx: [{ t: 'burrow' }], desc: 'Dig underground: hidden & untargetable, 0.7x speed, cannot attack.' },
-  ea_erupt: { name: 'Erupt', type: 'active', target: 'self', cd: 14, ai: 'erupt', req: 'burrowed', kind: 'erupt',
-    fx: [{ t: 'surface' }, { t: 'damage', shape: 'aoe', r: 7, amt: 180 }, { t: 'stun', shape: 'aoe', r: 7, dur: 1.5 }], desc: 'Burst out: 180 dmg r7 + 1.5s stun.' },
+    fx: [{ t: 'burrow' }] },
+  ea_erupt: { name: 'Erupt', type: 'active', target: 'self', cd: 20, ai: 'erupt', req: 'burrowed', kind: 'erupt',
+    fx: [{ t: 'surface' }, { t: 'damage', shape: 'aoe', r: 7, amt: 180 }, { t: 'stun', shape: 'aoe', r: 7, dur: 1.5 }] },
   ea_tremor: { name: 'Tremor Sense', type: 'passive', mods: { detect: 18 }, desc: 'Detects burrowed/hidden units within 18.' },
   ea_rootnet: { name: 'Root Network', type: 'passive', mods: { rootnet: { r: 30, speedMul: 1.6 } }, desc: 'Underground near own buildings: +60% speed.' },
   ea_swoop: { name: 'Swarm Swoop', type: 'active', target: 'unit', range: 12, cd: 10, auto: true, air: 'both', kind: 'dash',
-    fx: [{ t: 'dash', to: 'target', hit: { amt: 35, r: 2, air: 'both' } }], desc: 'Swoop a target: 35 dmg.' },
+    fx: [{ t: 'dash', to: 'target', hit: { amt: 25, r: 2, air: 'both' } }] },
   ea_updraft: { name: 'Updraft', type: 'active', target: 'self', cd: 18, ai: 'combat', auto: true, kind: 'speed',
-    fx: [{ t: 'buff', who: 'alliesAir', r: 10, dur: 4, speedMul: 1.4, dmgMul: 0.8 }], desc: 'Allied flyers r10: +40% speed, -20% dmg taken 4s.' },
+    fx: [{ t: 'buff', who: 'alliesAir', r: 10, dur: 4, speedMul: 1.4, dmgMul: 0.8 }] },
   ea_featherstorm: { name: 'Feather Storm', type: 'active', target: 'point', range: 10, cd: 14, auto: true, air: 'both', kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 4, amt: 50, air: 'both' }], desc: '50 dmg r4 (air and ground).' },
+    fx: [{ t: 'damage', shape: 'aoe', r: 4, amt: 25, air: 'both' }] },
   ea_flock: { name: 'Flock Instinct', type: 'passive', mods: { perAlly: { kind: 'earth_glider', r: 10, dps: 0.08, max: 5 } }, desc: '+8% dps per nearby glider (max +40%).' },
 
   // ======================= STORM (speed, hit-and-run, lightning)
   st_tailwind: { name: 'Tailwind', type: 'active', target: 'self', cd: 16, ai: 'engage', auto: true, kind: 'speed',
-    fx: [{ t: 'buff', who: 'allies', r: 8, dur: 4, speedMul: 1.4 }], desc: 'Allies in r8 +40% speed 4s.' },
+    fx: [{ t: 'buff', who: 'allies', r: 8, dur: 4, speedMul: 1.4 }] },
   st_javelin: { name: 'Shock Javelin', type: 'active', target: 'unit', range: 14, cd: 10, auto: true, air: 'both', kind: 'single',
-    fx: [{ t: 'damage', shape: 'single', amt: 50 }, { t: 'stun', shape: 'single', dur: 0.6 }], desc: '50 dmg + 0.6s stun.' },
-  st_static: { name: 'Static Charge', type: 'passive', mods: { everyN: { n: 4, chain: { amt: 20, bounces: 2, jump: 8 } } }, desc: 'Every 4th attack arcs to 2 more enemies.' },
+    fx: [{ t: 'damage', shape: 'single', amt: 30 }, { t: 'stun', shape: 'single', dur: 0.4 }] },
+  st_static: { name: 'Static Charge', type: 'passive', mods: { everyN: { n: 4, chain: { amt: 8, bounces: 2, jump: 8 } } }, desc: 'Every 4th attack arcs to 2 more enemies.' },
   st_windstep: { name: 'Windstep', type: 'active', target: 'self', cd: 10, ai: 'flee', auto: true, kind: 'dash',
-    fx: [{ t: 'dash', to: 'away', dist: 8 }], desc: 'Leap 8u away from the nearest enemy.' },
+    fx: [{ t: 'dash', to: 'away', dist: 8 }] },
   st_fullsail: { name: 'Full Sail', type: 'active', target: 'self', cd: 14, ai: 'engage', auto: true, kind: 'speed',
-    fx: [{ t: 'buff', who: 'self', dur: 4, speedMul: 1.6 }], desc: '+60% speed 4s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 4, speedMul: 1.6 }] },
   st_arclance: { name: 'Arc Lance', type: 'active', target: 'unit', range: 12, cd: 12, auto: true, kind: 'chain',
-    fx: [{ t: 'chain', amt: 60, bounces: 3, jump: 8, falloff: 0.8 }], desc: 'Lightning: 60 dmg, chains to 3 more.' },
+    fx: [{ t: 'chain', amt: 30, bounces: 3, jump: 8, falloff: 0.75 }] },
   st_hitrun: { name: 'Hit and Run', type: 'passive', mods: { onHitSelf: { speedMul: 1.35, dur: 2 } }, desc: '+35% speed for 2s after attacking.' },
   st_jib: { name: 'Jib Turn', type: 'active', target: 'self', cd: 12, ai: 'flee', auto: true, kind: 'dash',
-    fx: [{ t: 'dash', to: 'away', dist: 10 }, { t: 'buff', who: 'self', dur: 2, dmgMul: 0.7 }], desc: 'Swing away 10u; -30% dmg taken 2s.' },
+    fx: [{ t: 'dash', to: 'away', dist: 10 }, { t: 'buff', who: 'self', dur: 2, dmgMul: 0.7 }] },
   st_chain: { name: 'Chain Lightning', type: 'active', target: 'unit', range: 16, cd: 16, auto: true, air: 'both', kind: 'chain',
-    fx: [{ t: 'chain', amt: 120, bounces: 4, jump: 10, falloff: 0.8, stun: 0.4, air: 'both' }], desc: '120 dmg, chains to 4 more (x0.8), 0.4s stun.' },
+    fx: [{ t: 'chain', amt: 50, bounces: 4, jump: 10, falloff: 0.75, stun: 0.3, air: 'both' }] },
   st_stormfront: { name: 'Storm Front', type: 'active', target: 'point', range: 16, cd: 18, auto: true, kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 7, amt: 30 }, { t: 'slow', shape: 'aoe', r: 7, mul: 0.55, dur: 3 }], desc: '30 dmg r7 + 45% slow 3s.' },
+    fx: [{ t: 'damage', shape: 'aoe', r: 7, amt: 15 }, { t: 'slow', shape: 'aoe', r: 7, mul: 0.6, dur: 3 }] },
   st_capacitor: { name: 'Capacitor Bank', type: 'passive', mods: { healthy: { above: 0.7, dpsMul: 1.15 } }, desc: '+15% dps above 70% hp.' },
   st_gustram: { name: 'Gust Ram', type: 'active', target: 'unit', range: 14, cd: 14, auto: true, kind: 'dash',
-    fx: [{ t: 'dash', to: 'target', hit: { amt: 70, r: 3, knock: 6 } }], desc: 'Ram: 70 dmg r3, big knockback.' },
+    fx: [{ t: 'dash', to: 'target', hit: { amt: 40, r: 3, knock: 6 } }] },
   st_hv_sail: { name: 'Run Before the Wind', type: 'active', target: 'self', cd: 20, ai: 'hurt', auto: true, kind: 'speed',
-    fx: [{ t: 'buff', who: 'self', dur: 5, speedMul: 1.7 }], desc: '+70% speed 5s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 5, speedMul: 1.7 }] },
   st_hv_static: { name: 'Static Discharge', type: 'active', target: 'self', cd: 22, ai: 'aoe', min: 1, auto: true, kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 6, amt: 30 }, { t: 'stun', shape: 'aoe', r: 6, dur: 1 }], desc: '30 dmg r6 + 1s stun.' },
+    fx: [{ t: 'damage', shape: 'aoe', r: 6, amt: 30 }, { t: 'stun', shape: 'aoe', r: 6, dur: 1 }] },
   st_hv_mirage: { name: 'Dust Mirage', type: 'active', target: 'self', cd: 26, ai: 'hurt', auto: true, kind: 'shield',
-    fx: [{ t: 'buff', who: 'self', dur: 4, dmgMul: 0.5 }], desc: '-50% dmg taken 4s.' },
+    fx: [{ t: 'buff', who: 'self', dur: 4, dmgMul: 0.5 }] },
   st_hv_featherweight: { name: 'Featherweight', type: 'passive', mods: { oocSpeed: { mul: 1.15, ooc: 3 } }, desc: '+15% speed out of combat.' },
   st_lstorm: { name: 'Lightning Storm', type: 'active', target: 'point', range: 20, cd: 20, auto: true, air: 'both', kind: 'zone',
-    fx: [{ t: 'zone', zk: 'lightning', r: 6, dur: 5, dps: 30, air: 'both' }], desc: 'Storm r6 5s: 30 dps (air and ground).' },
+    fx: [{ t: 'zone', zk: 'lightning', r: 6, dur: 5, dps: 12, air: 'both' }] },
   st_overcharge: { name: 'Overcharge', type: 'active', target: 'self', cd: 22, ai: 'combat', min: 3, aiR: 16, auto: true, kind: 'buff',
-    fx: [{ t: 'buff', who: 'allies', r: 10, dur: 5, speedMul: 1.3, dpsMul: 1.25 }], desc: 'Allies r10: +30% speed, +25% dps 5s.' },
+    fx: [{ t: 'buff', who: 'allies', r: 10, dur: 5, speedMul: 1.3, dpsMul: 1.25 }] },
   st_dustdevil: { name: 'Dust Devil', type: 'active', target: 'self', cd: 25, ai: 'combat', aiR: 16, auto: true, kind: 'summon',
-    fx: [{ t: 'summon', kind: 'storm_dustdevil', n: 2, dur: 10 }], desc: 'Summon 2 dust devils for 10s.' },
+    fx: [{ t: 'summon', kind: 'storm_dustdevil', n: 2, dur: 10 }] },
   st_staticfield: { name: 'Static Field', type: 'passive', mods: { aura: { r: 8, who: 'enemies', slowMul: 0.85 } }, desc: 'Enemies within 8 are slowed 15%.' },
   st_bolt: { name: 'Lightning Strike', type: 'active', target: 'unit', range: 14, cd: 12, auto: true, air: 'both', kind: 'single',
-    fx: [{ t: 'damage', shape: 'single', amt: 70 }, { t: 'stun', shape: 'single', dur: 0.7 }], desc: '70 dmg + 0.7s stun.' },
+    fx: [{ t: 'damage', shape: 'single', amt: 45 }, { t: 'stun', shape: 'single', dur: 0.5 }] },
   st_gust: { name: 'Downdraft', type: 'active', target: 'self', cd: 16, ai: 'aoe', min: 2, auto: true, kind: 'aoe',
-    fx: [{ t: 'damage', shape: 'aoe', r: 6, amt: 20 }, { t: 'knock', shape: 'aoe', r: 6, dist: 5 }], desc: '20 dmg r6 below + knockback.' },
+    fx: [{ t: 'damage', shape: 'aoe', r: 6, amt: 15 }, { t: 'knock', shape: 'aoe', r: 6, dist: 5 }] },
   st_jetstream: { name: 'Jetstream', type: 'active', target: 'self', cd: 18, ai: 'engage', auto: true, kind: 'speed',
-    fx: [{ t: 'buff', who: 'alliesAir', r: 10, dur: 4, speedMul: 1.5 }], desc: 'Allied flyers r10 +50% speed 4s.' },
+    fx: [{ t: 'buff', who: 'alliesAir', r: 10, dur: 4, speedMul: 1.5 }] },
   st_evasive: { name: 'Evasive Rigging', type: 'passive', mods: { moving: { dmgMul: 0.85 } }, desc: '-15% dmg taken while moving.' },
 };
-for (const [id, d] of Object.entries(ABILITIES)) d.id = id;
+// Descriptions of actives are generated from their effect data so numbers never drift from balance changes.
+const pc = (m) => Math.round(Math.abs(1 - m) * 100) + '%';
+const where = (f) => f.shape === 'cone' ? ` in a ${f.len}u cone` : f.shape === 'line' ? ` in a ${f.len}u line` : f.shape === 'single' ? '' : f.r ? ` r${f.r}` : '';
+const airTxt = (f) => f.air === 'air' ? ' (air only)' : f.air === 'both' ? ' (air+ground)' : '';
+function describeFx(f) {
+  switch (f.t) {
+    case 'damage': return `${f.amt} dmg${where(f)}${airTxt(f)}${f.at === 'beyond' ? ` after a ${f.off}u bounce` : ''}`;
+    case 'dot': return `burn ${f.dps}/s for ${f.dur}s${where(f)}`;
+    case 'stun': return `${f.dur}s stun`;
+    case 'root': return `root ${f.dur}s`;
+    case 'slow': return `-${pc(f.mul)} speed ${f.dur}s`;
+    case 'knock': return 'knockback';
+    case 'buff': {
+      const who = f.who === 'self' ? '' : f.who === 'alliesAir' ? `allied flyers r${f.r}: ` : `allies r${f.r}: `;
+      const p = [];
+      if (f.root) p.push('rooted');
+      if (f.dmgMul) p.push(`-${pc(f.dmgMul)} dmg taken`);
+      if (f.armorAdd) p.push(`+${Math.round(f.armorAdd * 100)}% armor`);
+      if (f.speedMul) p.push(`+${pc(f.speedMul)} speed`);
+      if (f.dpsMul) p.push(`+${pc(f.dpsMul)} dps`);
+      if (f.rangeAdd) p.push(`+${f.rangeAdd} range`);
+      if (f.stunImmune) p.push('stun immune');
+      return `${who}${p.join(', ')} for ${f.dur}s`;
+    }
+    case 'heal': return `heal allies r${f.r} for ${f.amt}${f.over ? ` over ${f.over}s` : ''}`;
+    case 'zone': {
+      const p = [];
+      if (f.dps) p.push(`${f.dps} dps`);
+      if (f.slow) p.push(`-${pc(f.slow)} speed`);
+      if (f.rangeMul) p.push(`-${pc(f.rangeMul)} range`);
+      return `${f.zk === 'rain' ? 'rain' : 'field'} r${f.r} for ${f.dur}s: ${p.join(', ')} to enemies${f.air === 'air' ? ' (air only)' : f.air === 'both' ? ' (air+ground)' : ' (ground only)'}`;
+    }
+    case 'reveal': return `reveal r${f.r} for ${f.dur}s${f.detect ? ' (detects burrowed/mines)' : ''}`;
+    case 'burrow': return `burrow: hidden, untargetable, 0.7x speed, no attacks${f.max ? `, up to ${f.max}s` : ''}`;
+    case 'surface': return 'surface';
+    case 'dash': {
+      if (f.to === 'away') return `leap ${f.dist}u away from the nearest enemy`;
+      const h = f.hit || {}; const p = [];
+      if (h.amt) p.push(`${h.amt} dmg r${h.r}`); if (h.stun) p.push(`${h.stun}s stun`); if (h.knock) p.push('knockback');
+      return `charge the target${p.length ? ': ' + p.join(', ') : ''}`;
+    }
+    case 'chain': return `lightning ${f.amt} dmg, chains to ${f.bounces} more (x${f.falloff} each)${f.stun ? `, ${f.stun}s stun` : ''}`;
+    case 'summon': return `summon ${f.n} ${f.kind.split('_').pop()}s for ${f.dur}s`;
+    case 'mines': return `bury ${f.n} hidden mines in r${f.r}: ${f.amt} dmg + -${pc(f.slow)} speed on trigger (cap 30)`;
+    case 'claymore': return `plant a claymore: ${f.amt} dmg ${f.len}u cone when enemies walk in front`;
+    case 'charge': return `timed charge (${f.delay}s): ${f.amt} dmg r${f.r}, x${f.bld} vs buildings`;
+    case 'obstacle': return `water wall blocks enemy ground movement ${f.dur}s`;
+    case 'charges': return `next ${f.n} shots +${pc(f.mul)} dmg and burn ${f.dot.dps}/s`;
+  }
+  return '';
+}
+export function describe(def) {
+  if (def.type === 'passive') return def.desc || '';
+  const s = def.fx.map(describeFx).filter(Boolean).join('; ');
+  return `${s[0].toUpperCase()}${s.slice(1)}. Cooldown ${def.cd}s.`;
+}
+for (const [id, d] of Object.entries(ABILITIES)) { d.id = id; if (d.type === 'active') { d.desc = describe(d); } }
 
 // ------------------------------------------------------------------ helpers
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -307,9 +363,11 @@ export function createAbilities(world, sim, opts = {}) {
     inAb = true;
     try { sim.damage(v, src, amt); } finally { inAb = false; }
   }
+  // Same-id buffs don't stack: a recast refreshes (keeps the later expiry).
   function addBuff(o, b) {
     const s = S(o);
     if (b.stun && s.immuneUntil > now()) return;
+    if (b.id) { const ex = s.buffs.find(x => x.id === b.id); if (ex) { if (b.until > ex.until) Object.assign(ex, b); return; } }
     s.buffs.push(b);
   }
   function addDot(o, src, dps, dur, key) {
@@ -352,7 +410,7 @@ export function createAbilities(world, sim, opts = {}) {
         break;
       }
       case 'buff': for (const o of select(e, f, c2)) {
-        addBuff(o, { until: t + f.dur, dmgMul: f.dmgMul, speedMul: f.speedMul, dpsMul: f.dpsMul, rangeAdd: f.rangeAdd, armorAdd: f.armorAdd, root: f.root });
+        addBuff(o, { id: def.id, until: t + f.dur, dmgMul: f.dmgMul, speedMul: f.speedMul, dpsMul: f.dpsMul, rangeAdd: f.rangeAdd, armorAdd: f.armorAdd, root: f.root });
         if (f.stunImmune) S(o).immuneUntil = t + f.dur;
         hitList.add(o);
       } break;

@@ -6,6 +6,9 @@
 //   updateModels(dt, t)                     -> drives shader time (neon blink/flicker, holo spin, flames, smoke)
 //   decorateBase(THREE, scene, team, x, z)  -> Group of non-entity props around a cc (also added to scene)
 //   preloadModels(THREE)                    -> async: loads Poly Haven PBR textures + cannon_01 glTF (await before spawning)
+//   makeModel(THREE, kind, team, faction)   -> faction 'vanguard'|'volcanic'|'earth'|'storm' (else by team 0..3); namespaced roster kinds routed
+//   setRoster(ROSTER), setTeamTheme(team, name), registerTheme(name, set), setInstancing(bool)
+// Entity models are GPU-instanced proxies (see "GPU instancing"): engine still moves/hides/raycasts the returned Object3D.
 // Every model = a few merged meshes (one per material slot), templates cached per kind/theme and cloned.
 // Animation is all in shaders off one shared uTime uniform, so updateModels is O(1).
 // TODO.md (models): 'warden' returns null (GRAPHICS-A owns animated soldiers). 'rock' is unit-radius: scale by obstacle r.
@@ -286,7 +289,9 @@ function mats(theme) {
   }
   else if (theme === 'S') {
     const sand = pbr('rocky_terrain_02').clone(); sand.color.setRGB(2.2, 1.9, 1.5);
-    m = { stone: sand, jacq: pbrMats().jacq, denim: pbrMats().denim, glow,
+    const sail = new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), normalMap: pbrMats().denim.normalMap, roughness: 0.85, metalness: 0, side: T.DoubleSide, envMap: env, envMapIntensity: 0.4 });
+    sail.color.setRGB(1.15, 1.12, 1.05);
+    m = { stone: sand, jacq: pbrMats().jacq, denim: sail, glow,
       solid: new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), metalness: 0.45, roughness: 0.38, envMap: env, envMapIntensity: 1.0 }),
       energy: patchFx(new T.MeshBasicMaterial({ vertexColors: true, map: scanTex(), transparent: true, opacity: 0.45, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false }), 'senergy'),
       ember: sparkMat(), haze: smokeMat([0.72, 0.62, 0.45], 0.35, false) };

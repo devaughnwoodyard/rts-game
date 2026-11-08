@@ -57,7 +57,7 @@ export async function createHeroes(world, sim) {
   const isEnemy = (team, o) => o.team !== team && o.team >= 0 && o.state !== 'dead' && o.cls !== 'neutral';
   const qbuf = [];
   function around(x, z, r) {
-    if (sim.near) { try { return sim.near(x, z, r, qbuf).slice(); } catch (_) {} }
+    // plain scan (sim.near's hash is only rebuilt inside sim steps, so it misses units spawned this frame)
     return ents.filter(o => Math.hypot(o.x - x, o.z - z) <= r + (o.r || 0));
   }
   function enemiesNear(team, x, z, r, unitsOnly) {
@@ -116,11 +116,11 @@ export async function createHeroes(world, sim) {
       ready: true,
       steel: std(0x4b5560, { metalness: 0.7, roughness: 0.4 }), steelDark: std(0x262c33, { metalness: 0.7, roughness: 0.45 }),
       hazard: std(0xe0b020, { metalness: 0.3 }), piston: std(0xb8c2cc, { metalness: 0.9, roughness: 0.25 }),
-      cyan: glow(0x39d8ff, 1.6), white: glow(0xdff4ff, 2.2), bone: std(0xe8e2d0, { metalness: 0.1, roughness: 0.6 }),
+      cyan: glow(0x39d8ff, 1.6), white: glow(0x9fd4ff, 2.0), whiteCore: glow(0xeaf6ff, 2.4), bone: std(0xe8e2d0, { metalness: 0.1, roughness: 0.6 }),
       crimson: std(0x8c1c1c, { metalness: 0, roughness: 0.9, side: THREE.DoubleSide }), crimson2: std(0x6e1616, { metalness: 0, roughness: 0.9, side: THREE.DoubleSide }),
       haft: std(0x3a2a1c, { metalness: 0.1, roughness: 0.8 }), obsidian: std(0x141012, { metalness: 0.6, roughness: 0.3 }),
-      ember: glow(0xff4a10, 2.0), hot: glow(0xffb060, 2.4), horn: std(0xd8c7a0, { metalness: 0.05, roughness: 0.7 }),
-      bark: std(0x5a3e26, { metalness: 0.0, roughness: 0.95 }), gold: glow(0xffc84a, 1.8),
+      ember: glow(0xff3a08, 2.6), hot: glow(0xffd080, 3.0), horn: std(0xd8c7a0, { metalness: 0.05, roughness: 0.7 }),
+      bark: std(0x5a3e26, { metalness: 0.0, roughness: 0.95 }), gold: glow(0xffd25a, 2.6),
       leaf: std(0x4f7f32, { metalness: 0, roughness: 0.85, side: THREE.DoubleSide }), leaf2: std(0x35592a, { metalness: 0, roughness: 0.85, side: THREE.DoubleSide }),
       ring: new THREE.MeshBasicMaterial({ color: 0xffc840, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide }),
       chevron: new THREE.MeshBasicMaterial({ color: new THREE.Color(0xffd24a).multiplyScalar(1.4) }),
@@ -149,7 +149,7 @@ export async function createHeroes(world, sim) {
       }
       mesh.position.set(pos[0], pos[1], pos[2]); mesh.rotation.set(rot[0], rot[1], rot[2]);
       if (scl) mesh.scale.set(...scl);
-      mesh.castShadow = !mesh.material.isMeshBasicMaterial; mesh.frustumCulled = false;
+      mesh.castShadow = !!mesh.material && !mesh.material.isMeshBasicMaterial; mesh.frustumCulled = false;
       g.add(mesh);
       return mesh;
     };
@@ -218,7 +218,7 @@ export async function createHeroes(world, sim) {
     const ring = mk(M.ringGeo, M.ring); ring.position.y = 0.06; ring.renderOrder = 2; ring.name = 'heroRing';
     ring.raycast = () => {};
     root.add(ring);
-    const chev = mk(M.chevGeo, M.chevron); chev.position.y = height + 0.55; chev.name = 'heroChevron';
+    const chev = mk(M.chevGeo, M.chevron); chev.scale.setScalar(1.35); chev.position.y = height + 0.55; chev.name = 'heroChevron';
     chev.raycast = () => {};
     root.add(chev);
     if (world.contactShadow) root.add(world.contactShadow(1.0));
@@ -277,7 +277,8 @@ export async function createHeroes(world, sim) {
     at('RightHand', mk(G.box(22, 26, 46), M.bone), [-78, 258, -7], [0, 0, 0]);
     at('RightHand', mk(G.box(24, 20, 50), M.white), [-78, 258, -7], [0, 0, 0]);
     for (const s of [1, -1]) at('RightHand', mk(G.box(26, 30, 4), M.bone), [-78, 258, -7 + s * 23], [0, 0, 0]);
-    at('RightHand', mk(G.cone(6, 16, 6), M.white), [-78, 279, -7], [0, 0, 0]);
+    at('RightHand', mk(G.cone(6, 16, 6), M.whiteCore), [-78, 279, -7], [0, 0, 0]);
+    at('RightHand', mk(G.box(26, 8, 52), M.whiteCore), [-78, 258, -7], [0, 0, 0]);
   }
 
   function propsMagma(at, vis) {
@@ -328,15 +329,15 @@ export async function createHeroes(world, sim) {
     for (let i = 0; i < 6; i++) { const a = (i / 5 - 0.5) * 2; at('Spine2', mk(G.cone(8, 30, 3), L[(i + 1) % 2]), [Math.sin(a) * 15, 140, -22], [-0.25, a * 0.3, 0], [1, 1, 0.3]); }
     // glowing gold vein markings on limbs, chest and face
     for (const s of [1, -1]) {
-      at(s > 0 ? 'LeftArm' : 'RightArm', mk(G.box(26, 1.1, 1.2), M.gold), [s * 29, 149, 2], [0, 0, s * 0.08]);
-      at(s > 0 ? 'LeftArm' : 'RightArm', mk(G.box(14, 1.1, 1.2), M.gold), [s * 25, 141, 3], [0, 0, -s * 0.35]);
-      at(s > 0 ? 'LeftForeArm' : 'RightForeArm', mk(G.box(24, 1.1, 1.2), M.gold), [s * 57, 145, 3], [0, 0, s * 0.12]);
-      at(s > 0 ? 'LeftUpLeg' : 'RightUpLeg', mk(G.box(1.2, 34, 1.2), M.gold), [s * 9, 78, 11], [0, 0, s * 0.1]);
-      at(s > 0 ? 'LeftLeg' : 'RightLeg', mk(G.box(1.2, 36, 1.2), M.gold), [s * 9, 32, 14], [0.1, 0, -s * 0.06]);
-      at('Spine2', mk(G.box(1.2, 26, 1.2), M.gold), [s * 7, 138, 17], [0, 0, s * 0.4]);
+      at(s > 0 ? 'LeftArm' : 'RightArm', mk(G.box(26, 2.2, 2.2), M.gold), [s * 29, 149, 2], [0, 0, s * 0.08]);
+      at(s > 0 ? 'LeftArm' : 'RightArm', mk(G.box(14, 2.2, 2.2), M.gold), [s * 25, 141, 3], [0, 0, -s * 0.35]);
+      at(s > 0 ? 'LeftForeArm' : 'RightForeArm', mk(G.box(24, 2.2, 2.2), M.gold), [s * 57, 145, 3], [0, 0, s * 0.12]);
+      at(s > 0 ? 'LeftUpLeg' : 'RightUpLeg', mk(G.box(2.2, 34, 2.2), M.gold), [s * 9, 78, 11], [0, 0, s * 0.1]);
+      at(s > 0 ? 'LeftLeg' : 'RightLeg', mk(G.box(2.2, 36, 2.2), M.gold), [s * 9, 32, 14], [0.1, 0, -s * 0.06]);
+      at('Spine2', mk(G.box(2.2, 26, 2.2), M.gold), [s * 7, 138, 17], [0, 0, s * 0.4]);
       at('Head', mk(G.box(1, 9, 1), M.gold), [s * 6, 166, 16], [0, 0, s * 0.3]);
     }
-    at('Spine2', mk(G.box(1.2, 18, 1.2), M.gold), [0, 128, 18], [0, 0, 0]);
+    at('Spine2', mk(G.box(2.2, 18, 2.2), M.gold), [0, 128, 18], [0, 0, 0]);
     // branch crown
     for (const [x, rz, h] of [[-9, 0.5, 22], [9, -0.5, 22], [-4, 0.15, 16], [4, -0.15, 16]]) at('Head', mk(G.cone(1.6, h, 5), M.bark), [x, 192, -3], [-0.2, 0, rz]);
     // crossbow

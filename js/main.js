@@ -27,3 +27,9 @@ world.onFrame((dt) => {
   hud?.update?.(dt);
 });
 const heroes = await (await optional('./heroes.js', 'createHeroes'))?.(world, sim); // HEROES: self-registers its onFrame after the line above
+// ROSTER: unit abilities + ability bar (self-register their own onFrame after sim's).
+const createAbilities  = await optional('./abilities.js', 'createAbilities');
+const createAbilityBar = await optional('./abilitybar.js', 'createAbilityBar');
+const abilities  = createAbilities && sim ? createAbilities(world, sim) : null;
+const abilityBar = createAbilityBar ? createAbilityBar(world) : null;
+world.onFrame((dt) => { abilities?.update?.(dt); abilityBar?.update?.(dt); });

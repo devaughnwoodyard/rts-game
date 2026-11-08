@@ -36,7 +36,14 @@ export async function createEngine() {
     return m;
   });
   const charsP = import('./characters.js').then((c) => c.loadCharacters(null).then(() => c));
-  modelsP.catch(() => {}); charsP.catch(() => {});
+  // TERRAIN worker's js/terrain.js (v2 map/biomes): when it exports createTerrain, it replaces the
+  // legacy ground plane + rock obstacles below. Missing module → legacy behaviour.
+  // A missing module would log a 404 console error (fails smoke tests), so this is a switch, not a probe:
+  // flip TERRAIN_MODULE to true once js/terrain.js lands (or test with ?terrain=1 / ?terrain=0).
+  const TERRAIN_MODULE = false;
+  const useTerrain = params.has('terrain') ? params.get('terrain') === '1' : TERRAIN_MODULE;
+  const terrainP = useTerrain ? import('./terrain.js') : Promise.resolve({});
+  modelsP.catch(() => {}); charsP.catch(() => {}); terrainP.catch(() => {});
   const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
   // Quality: ?q=low|med|high, else saved choice, else med on touch devices / high on desktop.
   //  low: no shadows, no ground normal/AO maps, gradient env (no HDRI), pixel ratio 1
@@ -199,7 +206,15 @@ export async function createEngine() {
     t.x = clamp1(t.x, -hw + eL - sx, hw - eR + sx);
     t.z = clamp1(t.z, -hh + eT - sz, hh - eB + sz);
   }
+  let mapKey = '';
   function updateCamera() {
+    const mk = world.map.w + 'x' + world.map.h;
+    if (mk !== mapKey) { // zoom-out limits scale with the map (v1 160x100 → v2 512x320)
+      mapKey = mk; const k = Math.max(1, world.map.w / 160);
+      VIEWS.aerial.max = Math.max(48, world.map.h * 0.5 + 4); VIEWS.tactical.max = 100 * Math.min(k, 1.6); VIEWS.low.max = 46 * Math.min(k, 1.3);
+      for (const n in VIEWS) VIEWS[n].zoom = Math.min(VIEWS[n].zoom, VIEWS[n].max);
+      for (const c of Object.values(cams)) if (c.isPerspectiveCamera) c.far = Math.max(900, world.map.w * 2.2); else c.far = 600;
+    }
     const v = VIEWS[world.view], cam = cams[world.view];
     clampTarget(cam, v);
     placeCamera(cam, v, world.camTarget);
@@ -258,6 +273,14 @@ export async function createEngine() {
   window.visualViewport?.addEventListener('resize', resize);
   world.size = () => ({ w: W, h: H, dpr });
 
+  let terrain = null;
+  try {
+    const tm = await terrainP;
+    if (typeof tm.createTerrain === 'function') terrain = await tm.createTerrain(world);
+  } catch (err) { terrain = null; if (!/Failed to fetch|Cannot find|404|Importing a module/i.test(err?.message || '')) console.warn('[engine] terrain.js failed, using legacy ground:', err?.message || err); }
+  world.terrain = terrain;
+
+  if (!terrain) { // ---------- Legacy ground + obstacles (v1) ----------
   // ---------- Ground ----------
   function groundCanvas() {
     const S = 512, c = document.createElement('canvas'); c.width = c.height = S;
@@ -420,6 +443,8 @@ export async function createEngine() {
       scene.add(grp);
     }
   }
+
+  } // end legacy ground + obstacles
 
   // ---------- Meshes ----------
   const matCache = new Map();
@@ -794,7 +819,7 @@ export async function createEngine() {
       _lp.set(c.x, y, c.z).applyMatrix4(sc.matrixWorldInverse);
       x0 = Math.min(x0, _lp.x); x1 = Math.max(x1, _lp.x); y0 = Math.min(y0, _lp.y); y1 = Math.max(y1, _lp.y);
     }
-    const MAXH = 80, q = 4; // clamp so the map keeps resolution; quantise to avoid resizing every pan
+    const MAXH = world.view === 'aerial' ? 170 : 80, q = 4; // clamp so the map keeps resolution; quantise to avoid resizing every pan
     const cl = (v) => Math.max(-MAXH, Math.min(MAXH, v));
     x0 = Math.floor(cl(x0 - 4) / q) * q; x1 = Math.ceil(cl(x1 + 4) / q) * q;
     y0 = Math.floor(cl(y0 - 4) / q) * q; y1 = Math.ceil(cl(y1 + 6) / q) * q;
@@ -964,7 +989,7 @@ export async function createEngine() {
     octx.setTransform(dpr, 0, 0, dpr, 0, 0);
     const sel = input.selected;
     for (const e of world.entities) {
-      if (e.team < 0 && !sel.has(e)) continue;
+      if ((e.team < 0 && !sel.has(e)) || e.hidden) continue; // TERRAIN: fogged enemies get no ring
       const selected = sel.has(e);
       const c = world.colors[e.team] ?? 0x39d8ff;
       if (!selected && !(e.cls === 'inf' || e.cls === 'veh')) continue;
@@ -977,7 +1002,7 @@ export async function createEngine() {
       octx.stroke(); octx.shadowBlur = 0;
     }
     for (const e of world.entities) {
-      if (!(e.hpMax > 0) || e.team < 0) continue;
+      if (!(e.hpMax > 0) || e.team < 0 || e.hidden) continue; // TERRAIN: no health bar for fogged enemies
       const selected = sel.has(e);
       if (!(e.hp < e.hpMax) && !selected) continue;
       const aer = world.view === 'aerial';
@@ -1035,6 +1060,7 @@ export async function createEngine() {
     // swiftshader) first frames upload/mip every texture and starve main.js's module imports.
     if (!world.sim && now - bootT < 5000) { requestAnimationFrame(frame); return; }
     try { updateSquads(world.clock.dt); } catch (err) { console.error('[engine] squad anim error', err); }
+    try { terrain?.update?.(world.clock.dt); } catch (err) { console.error('[engine] terrain.update error', err); }
     try { models?.updateModels?.(world.clock.dt, world.clock.t); } catch (err) { console.error('[engine] updateModels error', err); }
     updateEnvNight();
     fitShadow();
@@ -1045,7 +1071,7 @@ export async function createEngine() {
 
   resize();
   world.setView('tactical');
-  trackEnv(ground);
+  if (world.ground) { trackEnv(world.ground); world.ground.receiveShadow = true; }
   if (models?.decorateBase) for (const [team, b] of BASES.entries()) {
     try { const d = models.decorateBase(THREE, scene, team, b.x, b.z, world.factions?.[team]); d?.traverse?.((o) => { if (o.isMesh && !o.material?.transparent) { o.castShadow = true; o.receiveShadow = true; } }); trackEnv(d); }
     catch (err) { console.warn('[engine] decorateBase failed', err?.message); }

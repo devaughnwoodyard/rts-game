@@ -664,10 +664,10 @@ export function createFx(world) {
       void main(){
         vec2 p = vUv * vec2(18.0, 9.0); vec2 r = vec2(1.0, 1.7320508); vec2 h = r * 0.5;
         vec2 a = mod(p, r) - h; vec2 b = mod(p - h, r) - h; vec2 g = dot(a,a) < dot(b,b) ? a : b;
-        float edge = smoothstep(0.40, 0.48, hexd(g));
+        float edge = smoothstep(0.44, 0.49, hexd(g));
         float fres = pow(1.0 - abs(dot(vN, vV)), 2.2);
         float scan = 0.5 + 0.5 * sin(vUv.y * 30.0 - uT * 6.0);
-        float al = (0.08 + edge * (0.55 + 0.25 * scan) + fres * 0.6) * uA;
+        float al = (0.04 + edge * (0.45 + 0.25 * scan) + fres * 0.55) * uA;
         gl_FragColor = vec4(uC * (0.6 + edge + fres), al);
       }`,
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
@@ -677,8 +677,8 @@ export function createFx(world) {
 
   // ---- root spikes (instanced)
   const RN = 128;
-  const spikeGeo = new THREE.ConeGeometry(0.28, 1.8, 5).translate(0, 0.9, 0);
-  const spikeMat = new THREE.MeshStandardMaterial({ color: 0x4a3a1e, roughness: 0.8, emissive: 0x6a8a1a, emissiveIntensity: 0.55 });
+  const spikeGeo = new THREE.ConeGeometry(0.22, 1.5, 5).translate(0, 0.75, 0);
+  const spikeMat = new THREE.MeshStandardMaterial({ color: 0x3a2814, roughness: 0.9, emissive: 0x7a9a20, emissiveIntensity: 0.35, flatShading: true });
   const spikes = new THREE.InstancedMesh(spikeGeo, spikeMat, RN);
   spikes.instanceMatrix.setUsage(THREE.DynamicDrawUsage); spikes.count = 0; spikes.frustumCulled = false; spikes.name = 'fx-roots';
   scene.add(spikes);
@@ -706,7 +706,7 @@ export function createFx(world) {
   const waters = meshPool(4, () => { const m = new THREE.Mesh(discGeo, waterMat()); m.renderOrder = 2; m.name = 'fx-water'; return m; });
   // ---- dirt mounds
   const moundGeo = new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-  const moundMat = new THREE.MeshStandardMaterial({ color: 0x5a4430, roughness: 1, flatShading: true });
+  const moundMat = new THREE.MeshStandardMaterial({ color: 0x4a3826, roughness: 1, flatShading: true });
   const mounds = meshPool(8, () => { const m = new THREE.Mesh(moundGeo, moundMat); m.name = 'fx-mound'; m.castShadow = false; return m; });
 
   // ---- projectiles (instanced per kind)
@@ -799,7 +799,7 @@ export function createFx(world) {
     for (let i = 0; i < n; i++) { const a = i / n * 6.283 + rand(-0.1, 0.1), rr = r * rand(0.82, 1.02); rootSpike(x + Math.cos(a) * rr, z + Math.sin(a) * rr, rand(0.9, 1.6), dur, i / n * 0.25); }
     for (let i = 0; i < 10; i++) { const a = Math.random() * 6.283, rr = Math.random() * r * 0.75; rootSpike(x + Math.cos(a) * rr, z + Math.sin(a) * rr, rand(0.4, 0.9), dur, rand(0, 0.3)); }
     for (const e of targets || []) for (let k = 0; k < 4; k++) { const a = k / 4 * 6.283 + rand(-0.3, 0.3), rr = (e.r || 1) * 0.9; rootSpike(e.x + Math.cos(a) * rr, e.z + Math.sin(a) * rr, rand(1, 1.5), dur, 0.05); }
-    gglow(x, z, r * 1.1, 0x9ac83a, dur, { alpha: 0.55, pulse: 3 });
+    gglow(x, z, r * 1.1, 0x6a9a20, dur, { alpha: 0.35, pulse: 3 });
     ring(x, z, r * 0.3, r * 1.15, 0.6, 0xc8e04a);
     for (let k = 0; k < 24; k++) { const a = Math.random() * 6.283, rr = r * rand(0.6, 1); crisp.spawn(x + Math.cos(a) * rr, 0.2, z + Math.sin(a) * rr, Math.cos(a) * 2, rand(3, 6), Math.sin(a) * 2, 0.32, 0.25, 0.16, rand(0.25, 0.4), rand(0.5, 0.9), { grav: GRAV, ground: true }); }
   }
@@ -826,7 +826,7 @@ export function createFx(world) {
     if (id === 'bulwark') { shield(src, src?.x ?? x, src?.z ?? z, 2.8, dur || 6, 0x58e0ff); return; }
     if (id === 'chain') {
       const pts = (d.points || [src, ...(d.targets || [])]).filter(Boolean).map((p, i) => ({ x: p.x, z: p.z, y: i === 0 ? 2.4 : 1.4 }));
-      if (pts.length > 1) bolt(pts, 0.3);
+      if (pts.length > 1) bolt(pts, 0.45);
       return;
     }
     if (id === 'eruption') {
@@ -939,7 +939,7 @@ export function createFx(world) {
       if (f.t >= f.dur || (f.ent && !alive(f.ent))) { fxs.splice(i, 1); continue; }
       const u = f.t / f.dur, a = 1 - u;
       switch (f.type) {
-        case 'bolt': jag(f.pts, 0.16, f.col[0], f.col[1], f.col[2], Math.min(1, a * 1.6), 0.55); break;
+        case 'bolt': jag(f.pts, 0.22, f.col[0], f.col[1], f.col[2], Math.min(1, a * 1.6), 0.55); break;
         case 'charge': {
           const y = f.y ?? 1.0, fa = a * a;
           qseg(f.ax, y, f.az, f.bx, y, f.bz, f.w, f.col[0], f.col[1] * 0.8, f.col[2] * 0.6, fa * 0.6);
@@ -1025,7 +1025,7 @@ export function createFx(world) {
       if (!mo.m.visible) continue;
       mo.life -= dt; if (mo.life <= 0) { mo.m.visible = false; continue; }
       const u = 1 - mo.life / mo.max, env = Math.min(1, u * 6, (1 - u) * 2.5);
-      mo.m.scale.set(mo.r, mo.r * 0.45 * env, mo.r);
+      mo.m.scale.set(mo.r, mo.r * 0.3 * env, mo.r);
     }
     // root spikes
     let rn = 0;
@@ -1038,7 +1038,7 @@ export function createFx(world) {
       _m4.compose(_p, _q, _v); spikes.setMatrixAt(rn++, _m4);
     }
     spikes.count = rn; if (rn) spikes.instanceMatrix.needsUpdate = true;
-    spikeMat.emissiveIntensity = 0.45 + 0.2 * Math.sin(fxT * 5);
+    spikeMat.emissiveIntensity = 0.3 + 0.15 * Math.sin(fxT * 5);
     updateProjectiles(dt);
     qGeo.setDrawRange(0, qn * 6);
     if (qn) qPA.needsUpdate = qCA.needsUpdate = qAA.needsUpdate = true;

@@ -795,11 +795,12 @@ export function createAbilities(world, sim, opts = {}) {
       const tick = z.next <= t;
       if (tick) z.next = t + 0.5;
       for (const o of enemiesIn(src, z.x, z.z, z.r, z.air)) {
-        if (!o.isUnit) { if (tick && z.dps) hurt(src, o, z.dps * 0.5); continue; }
+        const atk = alive(z.src) ? z.src : null;
+        if (!o.isUnit) { if (tick && z.dps) hurt(atk, o, z.dps * 0.5); continue; }
         const om = M(o);
         if (z.slow) om.slowMul = Math.min(om.slowMul, z.slow);
         if (z.rangeMul) om.rangeMul = Math.min(om.rangeMul, z.rangeMul);
-        if (tick && z.dps) hurt(src, o, z.dps * 0.5);
+        if (tick && z.dps) hurt(atk, o, z.dps * 0.5);
       }
     }
     // mines
@@ -814,14 +815,14 @@ export function createAbilities(world, sim, opts = {}) {
         const trig = enemiesIn(lay, o.x, o.z, c.trig + 2, 'ground', true).filter(v => !v.burrowed && inShape(o, f, ctx, v));
         if (trig.length) {
           const ff = { shape: 'cone', len: c.len, arc: c.arc };
-          for (const v of enemiesIn(lay, o.x, o.z, c.len + 2, 'ground').filter(v => inShape(o, ff, ctx, v))) hurt(alive(o.layer) ? o.layer : o, v, c.amt);
+          for (const v of enemiesIn(lay, o.x, o.z, c.len + 2, 'ground').filter(v => inShape(o, ff, ctx, v))) hurt(alive(o.layer) ? o.layer : null, v, c.amt);
           killMine(o);
         }
       } else {
         const trig = enemiesIn(lay, o.x, o.z, (ROSTER.vanguard_mine.trigger || 2.5), 'ground', true).filter(v => !v.burrowed);
         if (trig.length) {
           for (const v of enemiesIn(lay, o.x, o.z, 2.5, 'ground')) {
-            hurt(alive(o.layer) ? o.layer : o, v, o.mineDmg || 160);
+            hurt(alive(o.layer) ? o.layer : null, v, o.mineDmg || 160);
             if (o.mineSlow && v.isUnit) addBuff(v, { until: t + (o.mineSlowDur || 2), slowMul: o.mineSlow });
           }
           killMine(o);
@@ -846,7 +847,7 @@ export function createAbilities(world, sim, opts = {}) {
       }
       for (let i = s.dots.length - 1; i >= 0; i--) {
         const d = s.dots[i];
-        if (d.next <= t) { d.next += 0.5; hurt(alive(d.src) ? d.src : e, e, d.dps * 0.5); }
+        if (d.next <= t) { d.next += 0.5; hurt(alive(d.src) ? d.src : null, e, d.dps * 0.5); }
         if (d.until <= t || !alive(e)) s.dots.splice(i, 1);
       }
       if (!alive(e)) continue;

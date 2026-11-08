@@ -1,5 +1,5 @@
 // defense.js — BASE BUILDING v3: player-built walls/gates/turrets, wall widening + turret slots, crew, defense TECH
-// unlocks (bought with SECONDARY at the cc), faction tech abilities (moat/minefield/sandstorm/...), AI auto-planner.
+// unlocks (bought with SECONDARY at the cc), faction tech abilities (thornwall/spikes/minefield/sandstorm/...), AI auto-planner.
 // Owner: BUILDER worker. Exports createDefense(sim, world) -> api (also world.defense). UI lives in js/buildmode.js.
 //
 // TODO.md (stubs / assumptions):
@@ -14,8 +14,11 @@
 // - Meshes face local +X; wall length = local X, thickness = local Z (widened walls scale.z = 2). Turrets on widened
 //   walls sit at y = DEF.wallTop (mesh.position.y). Buildings aren't re-synced by sim, so we position meshes here.
 // - Gates: team-tagged world.obstacles circle (sim + pathing let own team through).
+// - Moats removed (CONTRACT update): Earth T5 = Thornwall (team-tagged root barrier ring, contact dmg+slow), Volcanic T5 =
+//   Obsidian Spike Field (non-blocking spike patches, dmg+slow), Vanguard T5 = Hardened Bunkers (turrets +40% hp),
+//   Storm T5 = Sandstorm Wall; Vanguard T7 = Minefield Belt. world.ui.baseLevel[team] (0-3) + 'baselevel' bus event.
 // - Tech list per faction keeps the v2 tier names. For the PLAYER, techs only unlock things (wall grades, turret
-//   types, gates) or trigger abilities (moat ring / minefield / sandstorm / tall turrets / surveillance). The AI
+//   types, gates) or trigger abilities (thornwall / spike field / minefield / sandstorm / tall turrets / surveillance). The AI
 //   auto-planner places walls/turrets with the same placement functions the player uses.
 // - Housing / Processor: econ.placeBuilding when present, else a local fallback (primary cost, barracks/factory mesh).
 
@@ -173,7 +176,7 @@ export function createDefense(sim, world) {
       if (e === ignore) continue;
       if (!alive(e) && e.kind !== 'crystal') continue;
       if (e.cls !== 'bld' && e.kind !== 'crystal') continue;
-      if (e.untargetable && !e.moat) continue;            // sandstorm / mines don't block placement
+      if (e.untargetable && !e._obs) continue;            // sandstorm / mines don't block placement
       if (ignoreWalls && (e.kind === 'wall' || e.kind === 'gate')) continue;
       if (e.onWall) continue;
       const d = Math.hypot(e.x - x, e.z - z);
@@ -226,6 +229,7 @@ export function createDefense(sim, world) {
         if (e.mesh?.position) e.mesh.position.y = DEF.wallTop;
       }
       if (T[team].tall && !opts.siege) makeTall(e);
+      if (T[team].hardened) { e.hpMax = Math.round(e.hpMax * 1.4); e.hp = e.hpMax; }
     }
     if (kind === 'wall' || kind === 'gate') e.sight = 6;   // walls aren't watchtowers (fog cost)
     const ry = opts.rot != null ? opts.rot : -baseOf(team).face;
@@ -519,7 +523,7 @@ export function createDefense(sim, world) {
     world.ui.needsCrew = needs[0]; world.ui.needsCrewSupply = needs[1];
   }
 
-  // ---------- faction tech extras: mines, moats, sandstorm ----------
+  // ---------- faction tech extras: mines, thornwall, spikes, sandstorm ----------
   const zones = new Set();
   function ringPoints(team, R, spacing, gapA, gapArc) {
     const b = baseOf(team), n = Math.max(8, Math.round(TAU * R / spacing)), out = [];
@@ -540,14 +544,23 @@ export function createDefense(sim, world) {
     emit('built', { entity: e });
     return e;
   }
-  function moatRing(team, type) {
+  // Earth Thornwall: ring of root-barrier segments (team-tagged obstacle: blocks other teams; contact = dmg + slow)
+  function thornwallRing(team) {
     const b = baseOf(team), R = DEF.ring2 + 6;
     for (const p of ringPoints(team, R, 4.5, b.face, 6)) {
       if (blockedBy(p.x, p.z, 2, false)) continue;
-      const e = spawnZone(type === 'lava' ? 'moat_lava' : 'moat_water', team, p.x, p.z, 3, { moat: type, rot: -p.a - Math.PI / 2 });
+      const e = spawnZone('thornwall', team, p.x, p.z, 2.6, { zone: 'thorn', rot: -p.a - Math.PI / 2 });
       if (!e) continue;
-      const o = { x: p.x, z: p.z, r: 3, team, owner: e, moat: type };
+      const o = { x: p.x, z: p.z, r: 2.6, team, owner: e, thorn: true };
       e._obs = o; world.obstacles.push(o);
+    }
+  }
+  // Volcanic Obsidian Spike Field: patches of spikes (non-blocking) that damage + slow ground attackers
+  function spikeField(team) {
+    const R = DEF.ring2 + 7;
+    for (const p of ringPoints(team, R, 6, null, 0)) {
+      if (blockedBy(p.x, p.z, 2, false)) continue;
+      spawnZone('obsidian_spikes', team, p.x, p.z, 3.5, { zone: 'spikes', rot: -p.a });
     }
   }
   function sandstormRing(team) {
@@ -588,11 +601,13 @@ export function createDefense(sim, world) {
           sim.kill?.(z); zones.delete(z);
           break;
         }
-      } else if (z.moat === 'lava') {
+      } else if (z.zone === 'thorn' || z.zone === 'spikes') {
+        const reach = z.zone === 'thorn' ? z.r + 1.5 : z.r, dps = z.zone === 'thorn' ? 18 : 14;
         for (const u of cand.slice()) {
-          if (!isUnit(u) || u.team === z.team || u.team < 0 || !alive(u) || u.air) continue;
-          if (Math.hypot(u.x - z.x, u.z - z.z) - (u.r || 0) > z.r + 1.5) continue;
-          sim.damage?.(u, null, 20 * step);
+          if (!isUnit(u) || u.team === z.team || u.team < 0 || !alive(u) || u.air || u.burrowed) continue;
+          if (Math.hypot(u.x - z.x, u.z - z.z) - (u.r || 0) > reach) continue;
+          sim.damage?.(u, null, dps * step);
+          if (alive(u) && !(u.env && u.env.slow < 0.55 && u.env.until > t)) u.env = { slow: 0.55, sight: 1, until: t + 0.6 };
         }
       } else if (z.zone === 'sandstorm') {
         for (const u of cand) {
@@ -611,7 +626,7 @@ export function createDefense(sim, world) {
     { id: 'wallring', name: 'Wall Ring', cost: 350, buildTime: 75, desc: 'Unlocks gates + Reinforced walls', apply: t => { unlock(t, 'gate'); T[t].grade = Math.max(T[t].grade, 2); } },
     { id: 'cannon', name: 'Cannon Turrets', cost: 450, buildTime: 90, desc: 'Unlocks cannon turrets', apply: t => unlock(t, 'turret_cannon') },
     { id: 'extwall', name: 'Extended Wall', cost: 550, buildTime: 100, desc: 'Fortified walls + AA turret', apply: t => { T[t].grade = Math.max(T[t].grade, 3); unlock(t, 'turret_aa'); } },
-    { id: 'moat', name: 'Moat', cost: 650, buildTime: 110, desc: 'Water moat ring (one crossing)', apply: t => moatRing(t, 'water') },
+    { id: 'bunkers', name: 'Hardened Bunkers', cost: 650, buildTime: 110, desc: 'Turrets +40% hp', apply: t => { T[t].hardened = true; for (const e of defs) if (e.team === t && e.baseRange) { e.hpMax = Math.round(e.hpMax * 1.4); e.hp *= 1.4; } } },
     { id: 'tall', name: 'Tall Turrets', cost: 750, buildTime: 120, desc: '+40% turret range', apply: t => { T[t].tall = true; for (const e of defs) if (e.team === t && e.baseRange && !e.siege) makeTall(e); } },
     { id: 'artillery', name: 'Artillery Battery', cost: 900, buildTime: 135, desc: 'Unlocks artillery (crew 4)', apply: t => unlock(t, 'artillery') },
     { id: 'surv', name: 'Surveillance', cost: 1000, buildTime: 145, desc: 'Sight +50%, no night penalty', apply: t => { world.ui.surveillanceBy[t] = true; if (t === 0) world.ui.surveillance = true; } },
@@ -620,10 +635,10 @@ export function createDefense(sim, world) {
   ];
   const OVERRIDES = {
     vanguard: { 6: { id: 'mines', name: 'Minefield Belt', cost: 900, buildTime: 135, desc: 'Lays a ring of AP mines', apply: t => minefield(t) } },
-    earth:    { 4: { id: 'moat', name: 'Water Moat', cost: 650, buildTime: 110, desc: 'Water moat ring (one crossing)', apply: t => moatRing(t, 'water') },
+    earth:    { 4: { id: 'thornwall', name: 'Thornwall', cost: 650, buildTime: 110, desc: 'Root barrier ring: blocks, slows + damages attackers', apply: t => thornwallRing(t) },
                 6: { id: 'regrow', name: 'Rootwall Regrowth', cost: 850, buildTime: 130, desc: 'Walls regrow 4 hp/s', apply: t => { T[t].wallRegen = 4; } } },
-    volcanic: { 4: { id: 'moat', name: 'Lava Moat', cost: 700, buildTime: 115, desc: 'Burning lava moat ring', apply: t => moatRing(t, 'lava') } },
-    storm:    { 4: { id: 'moat', name: 'Sandstorm Wall', cost: 600, buildTime: 100, desc: 'Slowing, blinding sand ring', apply: t => sandstormRing(t) },
+    volcanic: { 4: { id: 'spikes', name: 'Obsidian Spike Field', cost: 700, buildTime: 115, desc: 'Spike ring: damage + slow', apply: t => spikeField(t) } },
+    storm:    { 4: { id: 'sandstorm', name: 'Sandstorm Wall', cost: 600, buildTime: 100, desc: 'Slowing, blinding sand ring', apply: t => sandstormRing(t) },
                 6: { id: 'coils', name: 'Static Coils', cost: 850, buildTime: 130, desc: 'Turret hits slow targets', apply: t => { T[t].staticCoils = true; } } },
   };
   const tiersFor = (team) => {
@@ -654,6 +669,14 @@ export function createDefense(sim, world) {
     return { ok: true };
   }
   const buildDefense = (team = 0) => researchTech(team);
+  // Base look level 0-3 from techs owned (0-2 -> 0, 3-5 -> 1, 6-8 -> 2, 9-10 -> 3); models/FX listen to 'baselevel'.
+  world.ui.baseLevel = world.ui.baseLevel || new Array(NT).fill(0);
+  function updateBaseLevel(team) {
+    const n = T[team].researched.size, lvl = n >= 9 ? 3 : n >= 6 ? 2 : n >= 3 ? 1 : 0;
+    if (world.ui.baseLevel[team] === lvl) return;
+    world.ui.baseLevel[team] = lvl;
+    emit('baselevel', { team, level: lvl });
+  }
   function tierInfo(team = 0) {
     const st = T[team]; if (!st) return null;
     const ni = st.tiers.findIndex(x => !st.researched.has(x.index));
@@ -676,6 +699,7 @@ export function createDefense(sim, world) {
     try { td.apply(st.team); } catch (e) { console.warn('[defense] tech apply failed', e); }
     st.researched.add(b.index); st.lastTierAt = now();
     if (st.ai) aiOnTech(st, td);
+    updateBaseLevel(st.team);
     if (st.team === 0) { world.ui.defenseTier = st.researched.size; world.ui.defenseBuild = null; }
     else { world.ui.enemyTiers[st.team] = st.researched.size; world.ui.enemyTier = Math.max(...T.slice(1).map(s => s.researched.size)); }
     emit('tier', { team: st.team, tier: st.researched.size, name: b.name, id: td.id });

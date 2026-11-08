@@ -72,7 +72,7 @@ const LAYERS = [
   { f: 'ph/cracked_red_ground', tile: 13, lum: 0.3, tint: [1.0, 0.8, 0.72] },          // 3 cracked red earth
   { f: 'ph/forest_ground_04', tile: 9, lum: 0.36, tint: [0.95, 1.0, 0.88] },           // 4 forest floor
   { f: 'ph/aerial_grass_rock', tile: 16, lum: 0.36, tint: [0.85, 1.0, 0.78] },         // 5 grass + rock
-  { f: 'ph/aerial_sand', tile: 15, lum: 0.66, tint: [1.22, 1.02, 0.78] },              // 6 sand
+  { f: 'ph/aerial_sand', tile: 15, lum: 0.66, tint: [1.22, 1.03, 0.72] },              // 6 sand
   { f: 'ph/rock_face', tile: 10, lum: 0.42, tint: [1.15, 0.9, 0.8] },                  // 7 red mountainside rock
   { f: 'ph/rocky_trail', tile: 9, lum: 0.46, tint: [1.0, 0.97, 0.92] },                // 8 badlands gravel
   { f: 'ph/dry_riverbed_rock', tile: 14, lum: 0.42, tint: [0.98, 0.94, 0.9] },         // 9 badlands rock / mesa strata
@@ -481,8 +481,8 @@ export async function createTerrain(world) {
   }
   // groves
   const greens = [[0.018, 0.06, 0.014], [0.03, 0.08, 0.014], [0.055, 0.1, 0.016], [0.1, 0.11, 0.018], [0.015, 0.05, 0.02]];
-  for (let i = 0; i < 18; i++) {
-    const r = 7 + R() * 7, p = place(2, r, 0.55, 400, 8); if (!p) continue;
+  for (let i = 0; i < 28; i++) {
+    const r = 6 + R() * 7, p = place(2, r, 0.5, 500, 6); if (!p) continue;
     obs(p.x, p.z, r * 0.9, 'grove'); feats.push({ x: p.x, z: p.z, r, t: 'grove' });
     const n = Math.round(r * r / 5.5);
     for (let k = 0; k < n; k++) {
@@ -554,7 +554,7 @@ export async function createTerrain(world) {
   for (let z = -200; z < 20; z += 16 + R() * 10) { const x = HW + 14 + R() * 16, r = 10 + R() * 9; B[1].add(rockGeo((z | 0) + 99, 1, 0.6), M4(x, 0, z, R() * 6, r, r * (0.6 + R() * 0.7), r * 1.4), basaltC, L.BASALT); }
 
   // ---------- SE: dunes ----------
-  const sandC = (x, y, z, ly) => { const t = Math.min(1, y / 6), n = vnoise(x * 0.08, z * 0.08); return [0.95 + 0.1 * t + 0.05 * n, 0.86 + 0.08 * t + 0.04 * n, 0.72 + 0.06 * t]; };
+  const sandC = (x, y, z, ly) => { const t = Math.min(1, y / 6), n = vnoise(x * 0.08, z * 0.08); return [0.76 + 0.08 * t + 0.04 * n, 0.68 + 0.07 * t + 0.03 * n, 0.58 + 0.05 * t]; };
   function dune(x, z, Lh, Wd, H, ry, seed, collide) {
     const g = new THREE.PlaneGeometry(Lh * 2, Wd * 3.2, 30, 14); g.rotateX(-Math.PI / 2);
     const p = g.attributes.position;
@@ -563,8 +563,7 @@ export async function createTerrain(world) {
       const u = a / Lh, f = Math.max(0, 1 - u * u) ** 0.7;
       const s = bz - 0.45 * Wd * u * u;
       const prof = s < 0 ? Math.exp(-((s / (0.62 * Wd)) ** 2)) : Math.exp(-((s / (0.26 * Wd)) ** 2));
-      let y = H * f * prof * (0.85 + 0.3 * vnoise(a * 0.1 + seed, bz * 0.1, seed));
-      if (y < 0.08) y = -0.25;
+      const y = H * f * prof * (0.85 + 0.3 * vnoise(a * 0.1 + seed, bz * 0.1, seed)) - 0.3;
       p.setY(i, y);
     }
     g.computeVertexNormals();
@@ -715,6 +714,11 @@ export async function createTerrain(world) {
     const r = 1.4 + R() * 2.4, x = (R() - 0.5) * (MAP.w - 20), z = (R() - 0.5) * (MAP.h - 20);
     if (blockedBy(x, z, r, 5)) continue;
     const [b] = dominant(x, z), t = boulderTint[b];
+    if (b === 0) { // industrial: broken concrete blocks instead of boulders
+      for (let k = 0; k < 4; k++) { const s = r * (0.45 + R() * 0.4);
+        B[0].add(new THREE.BoxGeometry(1, 1, 1), M4(x + (R() - 0.5) * r, s * 0.35, z + (R() - 0.5) * r, R() * 6, s * 1.5, s * 0.8, s, (R() - 0.5) * 0.5, (R() - 0.5) * 0.5), concC(0.85), L.PANEL); }
+      obs(x, z, r * 0.95, 'rubble'); feats.push({ x, z, r, t: 'ruin' }); continue;
+    }
     B[b].add(rockGeo(2000 + i, 1, 0.55), M4(x, 0, z, R() * 6, r * (1 + R() * 0.4), r * (0.6 + R() * 0.5), r), C3(t[0], t[1], t[2]), t[3]);
     obs(x, z, r * 0.95, 'boulder'); feats.push({ x, z, r, t: 'rock' });
   }

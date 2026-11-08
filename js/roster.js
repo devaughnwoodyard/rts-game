@@ -141,7 +141,7 @@ const B = {
 
 /*BEGIN TUNING*/
 export const TUNING = {
-  "faction": { "vanguard": 1, "volcanic": 1, "earth": 1, "storm": 1 },
+  "faction": { "vanguard": 0.83, "volcanic": 0.86, "earth": 0.92, "storm": 1.51 },
   "unit": {}
 };
 /*END TUNING*/
@@ -170,7 +170,7 @@ export function applyTuning(t = TUNING) {
       minRange: b.minRange ?? 0, splash: b.splash ?? 0, armor: b.armor ?? 0,
       trainable: b.trainable !== false,
       vs: b.vs ? { ...b.vs } : { inf: 1, veh: 1, bld: 1 },
-      projectile: b.projectile || 'bullet',
+      projectile: b.projectile || (b.dps ? 'bullet' : null),
     });
   }
   return ROSTER;

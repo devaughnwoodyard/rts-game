@@ -40,7 +40,7 @@ export async function createEngine() {
   // legacy ground plane + rock obstacles below. Missing module → legacy behaviour.
   // A missing module would log a 404 console error (fails smoke tests), so this is a switch, not a probe:
   // flip TERRAIN_MODULE to true once js/terrain.js lands (or test with ?terrain=1 / ?terrain=0).
-  const TERRAIN_MODULE = false;
+  const TERRAIN_MODULE = true;
   const useTerrain = params.has('terrain') ? params.get('terrain') === '1' : TERRAIN_MODULE;
   const terrainP = useTerrain ? import('./terrain.js') : Promise.resolve({});
   modelsP.catch(() => {}); charsP.catch(() => {}); terrainP.catch(() => {});

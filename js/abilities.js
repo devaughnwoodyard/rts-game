@@ -190,7 +190,7 @@ export const ABILITIES = {
     fx: [{ t: 'buff', who: 'self', dur: 4, dmgMul: 0.5 }] },
   st_hv_featherweight: { name: 'Featherweight', type: 'passive', mods: { oocSpeed: { mul: 1.15, ooc: 3 } }, desc: '+15% speed out of combat.' },
   st_lstorm: { name: 'Lightning Storm', type: 'active', target: 'point', range: 20, cd: 20, auto: true, air: 'both', kind: 'zone',
-    fx: [{ t: 'zone', zk: 'lightning', r: 6, dur: 5, dps: 12, air: 'both' }] },
+    fx: [{ t: 'zone', zk: 'lightning', r: 6, dur: 5, dps: 10, air: 'both' }] },
   st_overcharge: { name: 'Overcharge', type: 'active', target: 'self', cd: 22, ai: 'combat', min: 3, aiR: 16, auto: true, kind: 'buff',
     fx: [{ t: 'buff', who: 'allies', r: 10, dur: 5, speedMul: 1.3, dpsMul: 1.25 }] },
   st_dustdevil: { name: 'Dust Devil', type: 'active', target: 'self', cd: 25, ai: 'combat', aiR: 16, auto: true, kind: 'summon',

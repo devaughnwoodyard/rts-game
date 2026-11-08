@@ -107,7 +107,7 @@ const fire = await page.evaluate((ids) => {
   const w = window.world, d = w.defense, s = w.sim;
   const t = [...d._defs].find(e => e.id === ids[0]);
   const kind = Object.keys(s.roster || {}).find(k => s.roster[k].faction === w.factions?.[1] && s.roster[k].role === 'heavy') || 'tank';
-  const foe = s.spawn(kind, 1, t.x + 6, t.z + 4); foe.hp = foe.hpMax = 1e6;
+  const foe = s.spawn(kind, 1, t.x + 6, t.z + 4); foe.hp = foe.hpMax = 1e6; foe.speed = 0; s.update(0.001);   // rebuild sim's spatial hash
   let shots = 0; const h = ev => { if (ids.includes(ev.detail?.shooter?.id)) shots++; };
   w.bus.addEventListener('shot', h);
   const tur = [...d._defs].filter(e => ids.includes(e.id));
@@ -124,10 +124,10 @@ const fire = await page.evaluate((ids) => {
   for (let i = 0; i < 30; i++) d.update(0.1);
   if (filler) s.kill(filler);
   w.bus.removeEventListener('shot', h);
-  return { noCrew, unmanned, withCrew: shots - noCrew, pool: d.crewPool(0), manned: tur.every(e => !e.unmanned) };
+  return { noCrew, unmanned, withCrew: shots - noCrew, pool: d.crewPool(0), manned: tur.every(e => !e.unmanned), dbg: tur.map(e => ({ un: e.unmanned, crew: e.crew, need: e.crewNeed, tgt: e.target?.id, range: e.range, d: Math.hypot(foe.x - e.x, foe.z - e.z), foeAlive: foe.state, hidden: foe.hidden, air: foe.air, canHit: s.canHit(e, foe) })), kind };
 }, turrets.map(t => t.id));
 ok(fire.unmanned && fire.noCrew === 0, `unmanned turrets do not fire (${fire.noCrew} shots)`);
-ok(fire.withCrew > 0, `crewed turrets fire (${fire.withCrew} shots, pool ${fire.pool})`);
+ok(fire.withCrew > 0, `crewed turrets fire (${fire.withCrew} shots, pool ${fire.pool})`); if (!fire.withCrew) console.log(JSON.stringify(fire));
 await page.evaluate(() => { const w = window.world; for (const e of w.defense._defs) if (e.team === 0 && e.crewNeed) { if (w.econ?.releaseCrew) { w.econ.releaseCrew(e); e.crew = 0; } else e.unmanned = true; } });
 await page.waitForTimeout(400);
 await shot('needs-crew');

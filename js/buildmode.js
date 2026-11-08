@@ -78,6 +78,7 @@ export function createBuildMode(world, defense) {
   const matOk = new THREE.MeshBasicMaterial({ color: 0x4dff7a, transparent: true, opacity: 0.45, depthWrite: false });
   const matBad = new THREE.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.5, depthWrite: false });
   const matSel = new THREE.MeshBasicMaterial({ color: 0xffd27a, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+  const matGate = new THREE.MeshBasicMaterial({ color: 0x39d8ff, transparent: true, opacity: 0.5, depthWrite: false });
   const matSlot = new THREE.MeshBasicMaterial({ color: 0x39d8ff, transparent: true, opacity: 0.7, depthWrite: false, side: THREE.DoubleSide });
   const segGeo = new THREE.BoxGeometry(3.8, 2, 1.5);
   const turGeo = new THREE.CylinderGeometry(1.4, 1.6, 2.2, 14);
@@ -250,9 +251,10 @@ export function createBuildMode(world, defense) {
   function previewWall(x0, z0, x1, z1) {
     const d = D(); const plan = d.planWall(P, x0, z0, x1, z1);
     hideGhosts();
-    plan.segs.forEach((s, i) => { const m = seg(i); m.visible = true; m.material = s.ok && plan.ok ? matOk : matBad; m.position.set(s.x, 1, s.z); m.rotation.y = s.rot; });
+    plan.segs.forEach((s, i) => { const m = seg(i); m.visible = true; m.material = !(s.ok && plan.ok) ? matBad : s.lane ? matGate : matOk; m.position.set(s.x, 1, s.z); m.rotation.y = s.rot; });
     S.pending = plan;
-    setInfo(`Wall · ${plan.n} seg · ${plan.cost.secondary} ${sec()}${plan.ok ? '' : ' · ' + plan.reason}`, !plan.ok);
+    const lg = plan.segs.filter(x => x.lane).length;
+    setInfo(`Wall · ${plan.n} seg · ${plan.cost.secondary} ${sec()}${lg ? ` · ${lg} lane gate${lg > 1 ? 's' : ''}` : ''}${plan.ok ? '' : ' · ' + plan.reason}`, !plan.ok);
     updateFab();
   }
   function previewPlace(x, z) {

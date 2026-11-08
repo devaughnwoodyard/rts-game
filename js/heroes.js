@@ -403,7 +403,11 @@ export async function createHeroes(world, sim) {
     const st = T[team]; if (!st) return false;
     if (st.state !== 'none') { if (team === 0) message(st.state === 'training' ? 'Hero already training' : 'Hero already summoned'); return false; }
     if (!ccOf(team)) return false;
-    if (!sim.spendCrystals(team, COST)) { if (team === 0) message('Not enough crystals'); return false; }
+    // Integrator: heroes cost both currencies (600 primary + 200 secondary) via the economy when present.
+    const econ = world.econ, hc = econ?.cost?.('hero') || { primary: COST, secondary: 200 };
+    if (econ?.spend ? !(econ.canAfford(team, hc) && econ.spend(team, hc, 'hero') !== false) : !sim.spendCrystals(team, COST)) {
+      if (team === 0) message(`Need ${hc.primary} ${econ?.names?.(team)?.primary || 'primary'} + ${hc.secondary} ${econ?.names?.(team)?.secondary || 'secondary'}`); return false;
+    }
     st.state = 'training'; st.t = 0; st.total = TRAIN_T;
     if (team === 0) message(`Training ${DEFS[factionOf(team)].name}`, 1500);
     return true;

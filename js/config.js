@@ -61,8 +61,8 @@ export const CONFIG = {
     richMul: 1.5,         // carry multiplier at the contested center fields
   },
   // ---- ECONOMY v3 (owner: ECON — js/economy.js). Two currencies per faction, land plots, extractors, hauling.
-  // Income math (per team): 1 primary extractor = 2.1/s = 126/min, 1 secondary = 0.75/s = 45/min, so the starting
-  // 1+1 extractors give ~126/45 per min. Mid-game 3 primary + 2 secondary + 1 Aether (on secondary) ≈ 380/155; with
+  // Income math (per team): 1 primary extractor = 2.1/s = 126/min, 1 secondary = 0.85/s = 51/min, so the starting
+  // 1+1 extractors give ~126/51 per min. Mid-game 3 primary + 2 secondary + 1 Aether (on secondary) ≈ 380/155; with
   // Aether on primary ≈ 510/90. A harvester (carry 60, load 5s, deposit 2s) on a base plot ~30u away hauls ~200/min,
   // so one hauler covers ~1.5 base extractors but only ~0.8 of a far center plot: expanding also needs haulers.
   // First 5 min: start 350/150 vs claim 60 sec + extractor 150 pri, housing 150 pri (+8 supply), units 55-260 pri,
@@ -79,7 +79,7 @@ export const CONFIG = {
     plotR: 4.5,
     extractor: {
       primary:   { cost: 150, time: 35, rate: 2.1,  cap: 240, hp: 700, r: 2.6 },
-      secondary: { cost: 120, time: 30, rate: 0.75, hp: 500, r: 2.2 },
+      secondary: { cost: 120, time: 30, rate: 0.85, hp: 500, r: 2.2 },
       aether:    { cost: 200, time: 40, rate: 1.1,  cap: 240, hp: 800, r: 2.8 },
     },
     aetherMul: { primary: 2, secondary: 1 },     // raw Aether -> currency at the processor (player toggle)

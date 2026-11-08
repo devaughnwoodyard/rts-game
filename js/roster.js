@@ -30,7 +30,7 @@ const B = {
   // ---------------------------------------------------------------- VANGUARD: industrial all-rounder
   vanguard_trooper: { faction: 'vanguard', role: 'infantry', name: 'Ironjacket Trooper', cost: { primary: 70, secondary: 0 }, buildTime: 20, building: 'barracks', supply: 1,
     hp: 140, armor: 0.15, speed: 7.2, sight: 18, range: 10, dps: 9, cooldown: 1.4, splash: 3, r: 1.2, cls: 'inf', projectile: 'minimissile',
-    canHitAir: true, vs: { inf: 0.9, veh: 1.4, bld: 1.0, air: 0.6 },
+    canHitAir: true, vs: { inf: 0.9, veh: 1.3, bld: 1.0, air: 1.0 },
     abilities: ['vg_frag', 'vg_digin', 'vg_flare', 'vg_brace'], blurb: 'Plate-armored trooper with a shoulder mini-missile pod (splash).' },
   vanguard_apc: { faction: 'vanguard', role: 'light', name: 'Bulldog APC', cost: { primary: 100, secondary: 0 }, buildTime: 24, building: 'barracks', supply: 2,
     hp: 240, armor: 0.2, speed: 11.5, sight: 22, range: 10, dps: 11, cooldown: 1.2, splash: 3, r: 1.7, cls: 'veh', light: true, projectile: 'minimissile',
@@ -54,8 +54,8 @@ const B = {
 
   // ---------------------------------------------------------------- VOLCANIC: sturdiest tanks, slow, no air
   volcanic_brute: { faction: 'volcanic', role: 'infantry', name: 'Cinder Brute', cost: { primary: 65, secondary: 0 }, buildTime: 20, building: 'barracks', supply: 1,
-    hp: 120, armor: 0.15, speed: 6.4, sight: 14, range: 6, dps: 12, cooldown: 0.9, r: 1.3, cls: 'inf', projectile: 'slug',
-    vs: { inf: 1.2, veh: 1.1, bld: 1.2, light: 1.2 },
+    hp: 120, armor: 0.15, speed: 6.4, sight: 14, range: 7, dps: 12, cooldown: 0.9, r: 1.3, cls: 'inf', projectile: 'slug',
+    vs: { inf: 1.3, veh: 1.1, bld: 1.2, light: 1.2 },
     abilities: ['vc_flameburst', 'vc_emberrush', 'vc_ignite', 'vc_moltenskin'], blurb: 'Basalt-skinned flamer brute.' },
   volcanic_scorcher: { faction: 'volcanic', role: 'light', name: 'Scorch Crawler', cost: { primary: 100, secondary: 0 }, buildTime: 24, building: 'barracks', supply: 2,
     hp: 240, armor: 0.25, speed: 9, sight: 16, range: 7, dps: 13, cooldown: 0.3, r: 1.7, cls: 'veh', light: true, projectile: 'slug',
@@ -124,7 +124,7 @@ const B = {
     canHitAir: true, vs: { inf: 1.0, veh: 1.0, bld: 0.6, light: 1.0, air: 1.0 },
     abilities: ['st_lstorm', 'st_overcharge', 'st_dustdevil', 'st_staticfield'], blurb: 'Storm shaman; calls lightning and dust devils.' },
   storm_kite: { faction: 'storm', role: 'air', name: 'Kitewing Skyraider', cost: { primary: 110, secondary: 15 }, buildTime: 26, building: 'airfield', supply: 2,
-    hp: 160, armor: 0, speed: 16, sight: 26, range: 10, dps: 18, cooldown: 0.6, r: 1.5, cls: 'veh', air: true, light: true, projectile: 'lightning',
+    hp: 160, armor: 0, speed: 16, sight: 26, range: 10, dps: 16, cooldown: 0.6, r: 1.5, cls: 'veh', air: true, light: true, projectile: 'lightning',
     canHitAir: true, vs: { inf: 1.2, veh: 1.0, bld: 0.6, light: 1.0, air: 1.0 },
     abilities: ['st_bolt', 'st_gust', 'st_jetstream', 'st_evasive'], blurb: 'Rider on a lightning kite.' },
 
@@ -141,7 +141,7 @@ const B = {
 
 /*BEGIN TUNING*/
 export const TUNING = {
-  "faction": { "vanguard": 0.87, "volcanic": 0.83, "earth": 0.93, "storm": 1.48 },
+  "faction": { "vanguard": 0.88, "volcanic": 0.82, "earth": 0.92, "storm": 1.5 },
   "unit": {}
 };
 /*END TUNING*/

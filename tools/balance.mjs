@@ -210,14 +210,25 @@ function matrix(mix, n = N) {
   return M;
 }
 const combatKinds = () => F.flatMap(f => FACTIONS[f].units.filter(k => ROSTER[k].role !== 'harvester'));
-// Cost-efficiency "vs everything": mono army of k vs a mono army of every other faction's combat unit at equal
-// cost; mean win rate. (Harvesters excluded.)
+// Cost-efficiency "vs everything": mono army of k vs a mono army of each opposing combat unit at equal cost.
+// A unit is "over-efficient vs everything" if some opposing faction has NO unit that holds it to <= 60%, i.e.
+// eff(k) = max over opposing factions of (min over that faction's units of k's win rate). Also returns the mean.
+let lastMean = 0;
 function monoEff(k, n = Math.max(3, N >> 4)) {
   const f = ROSTER[k].faction;
-  const opp = combatKinds().filter(o => ROSTER[o].faction !== f);
-  let s = 0;
-  for (const o of opp) s += rate(() => mono(k), () => mono(o), n);
-  return s / opp.length;
+  let worst = 0, sum = 0, cnt = 0;
+  for (const g of F) {
+    if (g === f) continue;
+    let best = 1;
+    for (const o of FACTIONS[g].units) {
+      if (ROSTER[o].role === 'harvester') continue;
+      const r = rate(() => mono(k), () => mono(o), n);
+      sum += r; cnt++; best = Math.min(best, r);
+    }
+    worst = Math.max(worst, best);
+  }
+  lastMean = sum / cnt;
+  return worst;
 }
 const pct = (v) => v == null ? '  -  ' : (v * 100).toFixed(0).padStart(4) + '%';
 function printMatrix(title, M) {
@@ -282,7 +293,7 @@ function tune() {
     if (spread < 0.06) {
       for (const k of combatKinds()) {
         const e = monoEff(k);
-        if (e > 0.58) { T.unit[k] = +((T.unit[k] ?? 1) * Math.max(0.85, 1 - (e - 0.55) * 0.6)).toFixed(3); changed++; console.log(`   cap ${k} mono ${pct(e)} -> ${T.unit[k]}`); }
+        if (e > 0.6) { T.unit[k] = +Math.max(0.75, (T.unit[k] ?? 1) * 0.92).toFixed(3); changed++; console.log(`   cap ${k} mono ${pct(e)} -> ${T.unit[k]}`); }
       }
       if (!off.length && !changed) return M;
       for (const [a, b] of off) {
@@ -290,6 +301,7 @@ function tune() {
         if (Math.abs(v) < 0.03) continue; // win-rate noise, margin says it's even
         let top = null, tv = -Infinity;
         for (const k of FACTIONS[win].units.filter(k => ROSTER[k].role !== 'harvester')) { rate(() => mono(k), () => buildArmy(lose, MIXES.combined), 4); if (lastMargin > tv) { tv = lastMargin; top = k; } }
+        if (tv < 0.3) { console.log(`   pair ${win}>${lose}: no outlier unit (best ${top} ${(tv * 100).toFixed(0)}), left to faction scalars`); continue; }
         T.unit[top] = +((T.unit[top] ?? 1) * Math.exp(-0.6 * Math.abs(v))).toFixed(3);
         console.log(`   pair ${win}>${lose} margin ${(Math.abs(v) * 100).toFixed(0)}: nerf ${top} -> ${T.unit[top]}`);
       }
@@ -377,9 +389,10 @@ if (args.tune) M = tune(); else { apply(); M = matrix('combined'); }
 printMatrix(`COMBINED ARMS, ${BUDGET} crystals, n=${2 * N}/pair`, M);
 if (!args.quick) {
   for (const mix of ['noair', 'infantry', 'armor']) printMatrix(`${mix.toUpperCase()} mix`, matrix(mix, Math.max(10, N >> 1)));
-  console.log('\nUnit cost-efficiency (mono army vs every opposing unit, equal cost):');
-  const rows = combatKinds().map(k => [k, monoEff(k)]).sort((a, b) => b[1] - a[1]);
-  for (const [k, e] of rows) console.log(`  ${k.padEnd(22)} ${pct(e)}${e > 0.6 ? '  <-- over 60%' : ''}`);
+  console.log('\nUnit cost-efficiency, equal-cost mono vs mono. "worst-case counter" = best win rate the unit keeps against the');
+  console.log('strongest counter any one opposing faction has (must be <= 60%); "mean" = average over all opposing units:');
+  const rows = combatKinds().map(k => { const e = monoEff(k); return [k, e, lastMean]; }).sort((a, b) => b[1] - a[1]);
+  for (const [k, e, m] of rows) console.log(`  ${k.padEnd(22)} worst-case ${pct(e)}  mean ${pct(m)}${e > 0.6 ? '  <-- no counter' : ''}`);
 }
 console.log('\nIdentity checks:');
 for (const [txt, ok] of identity()) console.log(`  [${ok ? 'ok' : 'FAIL'}] ${txt}`);

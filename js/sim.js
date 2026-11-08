@@ -41,6 +41,11 @@
 //  - trap:true (mines) / untargetable:true (moat, sandstorm): never targeted or damaged by attacks, don't block via
 //    structures, no fog sight (noSight), traps always hidden from the player when enemy. defense.js triggers them.
 //  - e.env = {slow, sight, until} (set by defense.js zones/mines) multiplies move speed and fog sight while active.
+//  - ECONOMY v3 (owner ECON, js/economy.js): currencies are econ.res[team] = {primary, secondary}; sim.crystals /
+//    spendCrystals / ui.crystals are PRIMARY shims. Unit cost = econ.unitCost(kind) (roster cost number or
+//    {primary, secondary}). Supply cap = econ.supplyCap(team) (cc/barracks/housing), supplyUsed adds defense crews.
+//    Harvesters run econ.updateHarvester (extractor stock -> nearest own processor) and pass through friendly units.
+//    Non-unit entities with noBlock / isPlot don't block movement. Unmanned defenses (e.unmanned) don't fire.
 import { CONFIG } from './config.js';
 import { createEconomy } from './economy.js';
 

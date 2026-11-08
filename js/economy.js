@@ -749,7 +749,7 @@ export function createEconomy(world, sim, H) {
     let need = 0;
     if (plots.some(p => p.owner === team && !live(p.ext))) need += E.extractor.primary.cost;
     if (supplyCap(team) - supplyUsed(team) <= 6 && supplyCap(team) < E.supply.max) need += E.costs.housing.primary;
-    return need * (1.2 - pers(team).army);
+    return need;   // economy investments are protected in full; personality.army shapes expansion pace instead
   }
   // Secondary spending gate for AI planners (BUILDER calls this for defense/tech): keeps each personality's split.
   function aiCanSpend(team, c, cat) {
@@ -760,7 +760,7 @@ export function createEconomy(world, sim, H) {
     const left = res[team].secondary - c.secondary, bc = b[cat] ?? 0.3;
     // expansion behind schedule gets first call on secondary: other categories must leave the next claim's cost
     const st = AIS[team];
-    if (cat !== 'expand' && st && st.behind && left < E.claim.aetherSecondary) return false;
+    if (st && st.behind) return cat === 'expand' || left >= E.claim.aetherSecondary;
     // within its budget share -> fine; over it -> only if enough stays banked for the other categories
     if (total < 150 || ((s[cat] || 0) + c.secondary) / (total + c.secondary) <= bc + 0.12) return true;
     return left >= 140 * (1 - bc);
@@ -798,7 +798,7 @@ export function createEconomy(world, sim, H) {
     if (st.behind) {
       const pRate = extractors.filter(x => x.team === t && x.res !== 'secondary').length;
       const sRate = extractors.filter(x => x.team === t && x.res === 'secondary').length;
-      const wantSec = sRate * 1.25 < pRate;
+      const wantSec = sRate < pRate;
       let best = null, bs = Infinity;
       for (const p of claimables(t)) {
         const dz = danger(t, p); if (dz > 1) continue;

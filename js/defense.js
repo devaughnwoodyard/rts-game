@@ -14,6 +14,8 @@
 // - Meshes face local +X; wall length = local X, thickness = local Z (widened walls scale.z = 2). Turrets on widened
 //   walls sit at y = DEF.wallTop (mesh.position.y). Buildings aren't re-synced by sim, so we position meshes here.
 // - Gates: team-tagged world.obstacles circle (sim + pathing let own team through).
+// - Walls never go on land plots / extractors / processors / housing; a segment crossing a harvester lane (owned
+//   extractor -> nearest processor/cc) is auto-built as a free gate (own harvesters pass).
 // - Moats removed (CONTRACT update): Earth T5 = Thornwall (team-tagged root barrier ring, contact dmg+slow), Volcanic T5 =
 //   Obsidian Spike Field (non-blocking spike patches, dmg+slow), Vanguard T5 = Hardened Bunkers (turrets +40% hp),
 //   Storm T5 = Sandstorm Wall; Vanguard T7 = Minefield Belt. world.ui.baseLevel[team] (0-3) + 'baselevel' bus event.
@@ -182,9 +184,14 @@ export function createDefense(sim, world) {
     return Math.hypot(x - (b.x + dx * t), z - (b.z + dz * t)) < pad;
   }
   const inMap = (x, z, m = 1) => Math.abs(x) <= (world.map?.w ?? 160) / 2 - m && Math.abs(z) <= (world.map?.h ?? 100) / 2 - m;
+  const ECON_BLOCK = new Set(['plot', 'extractor', 'processor', 'housing']);
   function blockedBy(x, z, r, ignoreWalls, ignore) {
     for (const e of ents()) {
       if (e === ignore) continue;
+      if (e.isPlot || ECON_BLOCK.has(e.kind) || e.extractor || e.processor) {   // land plots + econ buildings
+        if (e.state !== 'dead' && Math.hypot(e.x - x, e.z - z) < (e.r || 3) + r) return true;
+        continue;
+      }
       if (!alive(e) && e.kind !== 'crystal') continue;
       if (e.cls !== 'bld' && e.kind !== 'crystal') continue;
       if (e.untargetable && !e._obs) continue;            // sandstorm / mines don't block placement
@@ -203,6 +210,31 @@ export function createDefense(sim, world) {
       if (!blockedBy(nx, nz, r) && inMap(nx, nz, r)) return { x: nx, z: nz };
     }
     return null;
+  }
+  // Harvester lanes: straight line from each owned hauled extractor (and the cc fallback) to its nearest processor.
+  // A wall segment within LANE of a lane becomes a gate automatically (own harvesters pass, enemies don't).
+  const LANE = 3.2;
+  function lanes(team) {
+    const ec = E(); if (!ec?.extractors) return [];
+    const procs = (ec.processors || []).filter(p => p.team === team && alive(p));
+    const cc = ents().find(e => e.kind === 'cc' && e.team === team && alive(e));
+    if (cc) procs.push(cc);
+    const out = [];
+    for (const x of ec.extractors) {
+      if (x.team !== team || !alive(x) || x.res === 'secondary') continue;
+      let best = null, bd = Infinity;
+      for (const p of procs) { const d = Math.hypot(p.x - x.x, p.z - x.z); if (d < bd) { bd = d; best = p; } }
+      if (best) out.push([x.x, x.z, best.x, best.z]);
+    }
+    return out;
+  }
+  function onLane(team, x, z) {
+    for (const [ax, az, bx, bz] of lanes(team)) {
+      const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+      const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+      if (Math.hypot(x - (ax + dx * t), z - (az + dz * t)) < LANE) return true;
+    }
+    return false;
   }
   // Own territory: within buildRadius of an own non-wall structure.
   function inTerritory(team, x, z) {
@@ -297,7 +329,7 @@ export function createDefense(sim, world) {
       if (!inMap(x, z, 2)) r = 'Off map';
       else if (blockedBy(x, z, 1.6, false)) r = 'Blocked';
       else if (team === 0 && !inTerritory(team, x, z)) r = 'Too far from base';
-      segs.push({ x, z, rot, ok: !r, reason: r });
+      segs.push({ x, z, rot, ok: !r, reason: r, lane: !r && onLane(team, x, z) });
       if (r) { ok = false; reason = reason || r; }
     }
     const cost = C(n * segCost());
@@ -309,6 +341,7 @@ export function createDefense(sim, world) {
     const w = spawnDef('wall', L.team, p.x, p.z, { rot: p.rot, spent: C(spentEach) });
     if (!w) return null;
     w.line = L.id; w.lineIdx = i; L.segs[i] = w;
+    if (p.lane ?? onLane(L.team, p.x, p.z)) { convertGate(w, { free: true }); w.laneGate = true; }
     if (p.a != null) { w.ringA = p.a; w.ringR = p.R; }
     return w;
   }
@@ -386,11 +419,11 @@ export function createDefense(sim, world) {
     sim.kill?.(e);
     return { ok: true, refund: back };
   }
-  function convertGate(w) {
+  function convertGate(w, opts = {}) {
     if (!w || !alive(w) || w.kind !== 'wall') return { ok: false, reason: 'Not a wall' };
-    if (!T[w.team].unlocks.has('gate')) return { ok: false, reason: 'Needs tech' };
+    if (!opts.free && !T[w.team].unlocks.has('gate')) return { ok: false, reason: 'Needs tech' };
     if (w.widened) return { ok: false, reason: 'Widened walls cannot be gates' };
-    const c = C(DEF.cost.gate);
+    const c = C(opts.free ? 0 : DEF.cost.gate);
     if (!pay(w.team, c)) return { ok: false, reason: 'Not enough ' + currencyName(w.team) };
     // in-place swap: same entity, new kind/mesh/obstacle
     w.kind = 'gate';

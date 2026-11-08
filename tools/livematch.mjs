@@ -74,22 +74,26 @@ function duel(a, b, s) {
   else { const sa = r.army[1] + 0.5 * r.dmgTo[1][3], sb = r.army[3] + 0.5 * r.dmgTo[3][1]; w = sa > sb ? 1 : sa < sb ? 0 : 0.5; }
   return { w, r };
 }
+let lastMargin = 0;
+const marginOf = (r, A, B) => { const sa = r.army[A] + 0.5 * r.dmgTo[A][B] + (r.dead[B] ? 3000 : 0), sb = r.army[B] + 0.5 * r.dmgTo[B][A] + (r.dead[A] ? 3000 : 0); return (sa - sb) / Math.max(1, sa + sb); };
 function duelRate(a, b, log) {
-  let w = 0, n = 0;
+  let w = 0, n = 0, m = 0;
   for (let i = 0; i < SEEDS; i++) {
     const s = 1000 + i * 7919;
     const x = duel(a, b, s); w += x.w; n++;
     const y = duel(b, a, s + 1); w += 1 - y.w; n++;
+    m += marginOf(x.r, 1, 3) - marginOf(y.r, 1, 3);
     if (log) for (const [res, A, B, ww] of [[x.r, a, b, x.w], [y.r, b, a, y.w]])
       console.log(`  seed ${s} ${A}(NE) vs ${B}(SE): ${ww === 1 ? A : ww === 0 ? B : 'draw'} wins  t=${res.t}m  dead=${JSON.stringify([res.dead[1], res.dead[3]])}  dmg ${res.dmgTo[1][3]}/${res.dmgTo[3][1]}  army ${res.army[1]}/${res.army[3]}`);
   }
+  lastMargin = m / n;
   return w / n;
 }
 
 if (args.duel) {
   const [a, b] = String(args.duel).split(',');
   const r = duelRate(a, b, true);
-  console.log(`${a} vs ${b}: ${(r * 100).toFixed(0)}%`);
+  console.log(`${a} vs ${b}: ${(r * 100).toFixed(0)}% margin ${(lastMargin * 100).toFixed(1)}`);
   if (args.built) { const x = duel(a, b, 1000); console.log(JSON.stringify(x.r.built[1]), JSON.stringify(x.r.built[3])); }
 } else if (args.matrix) {
   const M = {};

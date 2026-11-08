@@ -41,7 +41,7 @@ const B = {
     vs: { inf: 0.9, veh: 1.4, bld: 1.6, light: 1.2 },
     abilities: ['vg_hullbrace', 'vg_apslug', 'vg_plating', 'vg_spotter'], blurb: 'Direct-fire slug-cannon tank; braces into a pillbox.' },
   vanguard_harvester: { faction: 'vanguard', role: 'harvester', name: 'Crawler Hauler', cost: { primary: 100, secondary: 0 }, buildTime: 40, building: 'factory', supply: 2,
-    hp: 380, armor: 0.25, speed: 6.4, sight: 14, range: 0, dps: 0, cooldown: 0, r: 2.0, cls: 'veh', harvester: true,
+    hp: 380, armor: 0.25, speed: 7, sight: 14, range: 0, dps: 0, cooldown: 0, r: 2.0, cls: 'veh', harvester: true,
     abilities: ['vg_hv_plating', 'vg_hv_boost', 'vg_hv_beacon', 'vg_hv_frame'], blurb: 'Tracked ore crawler.' },
   vanguard_sapper: { faction: 'vanguard', role: 'special', name: 'Sapper Crew', cost: { primary: 120, secondary: 10 }, buildTime: 26, building: 'barracks', supply: 2,
     hp: 150, armor: 0.2, speed: 7.2, sight: 20, range: 8, dps: 9, cooldown: 0.8, r: 1.3, cls: 'inf', projectile: 'bullet',
@@ -66,7 +66,7 @@ const B = {
     vs: { inf: 0.9, veh: 1.3, bld: 1.6, light: 1.2 },
     abilities: ['vc_magmacoat', 'vc_moltenram', 'vc_slagspray', 'vc_crust'], blurb: 'Magma-coated super-heavy; the toughest hull in the field.' },
   volcanic_harvester: { faction: 'volcanic', role: 'harvester', name: 'Slag Hauler', cost: { primary: 100, secondary: 0 }, buildTime: 40, building: 'factory', supply: 2,
-    hp: 420, armor: 0.3, speed: 5.6, sight: 12, range: 0, dps: 0, cooldown: 0, r: 2.0, cls: 'veh', harvester: true,
+    hp: 420, armor: 0.3, speed: 6.6, sight: 12, range: 0, dps: 0, cooldown: 0, r: 2.0, cls: 'veh', harvester: true,
     abilities: ['vc_hv_vent', 'vc_hv_harden', 'vc_hv_lavatrail', 'vc_moltenskin'], blurb: 'Slag-plated ore hauler.' },
   volcanic_mortar: { faction: 'volcanic', role: 'special', name: 'Crucible Siege Mortar', cost: { primary: 190, secondary: 25 }, buildTime: 45, building: 'factory', supply: 4, crew: 4,
     hp: 360, armor: 0.3, speed: 4.2, sight: 14, range: 24, minRange: 6, dps: 14, cooldown: 4.0, splash: 5, r: 2.3, cls: 'veh', projectile: 'ironball',
@@ -87,7 +87,7 @@ const B = {
     hp: 220, armor: 0.05, speed: 11.5, sight: 22, range: 11, dps: 14, cooldown: 1.0, r: 1.6, cls: 'veh', light: true, projectile: 'spear',
     vs: { inf: 1.5, veh: 0.6, bld: 0.4, light: 1.1 },
     abilities: ['ea_pounce', 'ea_piercespear', 'ea_flashflood', 'ea_barkskin'], blurb: 'War beast with a spear-thrower rider; spears pierce in a line.' },
-  earth_sunwing: { faction: 'earth', role: 'heavy', name: 'Sunwing', cost: { primary: 240, secondary: 40 }, buildTime: 50, building: 'airfield', supply: 4,
+  earth_sunwing: { faction: 'earth', role: 'heavy', name: 'Sunwing', cost: { primary: 240, secondary: 40 }, buildTime: 50, building: ['factory', 'airfield'], supply: 4,
     hp: 560, armor: 0.15, speed: 10, sight: 30, range: 12, dps: 26, cooldown: 1.5, r: 2.4, cls: 'veh', air: true, projectile: 'laser',
     canHitAir: true, vs: { inf: 1.2, veh: 1.15, bld: 1.0, light: 1.1, air: 1.5 },
     abilities: ['ea_solarbeam', 'ea_dive', 'ea_plumage', 'ea_sunburst'], blurb: 'Great golden flyer; the Cult\'s heavy.' },
@@ -98,7 +98,7 @@ const B = {
     hp: 340, armor: 0.15, speed: 8, sight: 18, range: 6, dps: 18, cooldown: 1.0, r: 1.9, cls: 'veh', projectile: 'spear',
     vs: { inf: 1.3, veh: 0.9, bld: 1.1, light: 1.1 },
     abilities: ['ea_burrow', 'ea_erupt', 'ea_tremor', 'ea_rootnet'], blurb: 'Tunnels hidden under the battlefield and erupts beneath foes.' },
-  earth_glider: { faction: 'earth', role: 'air', name: 'Dawnglider Flock', cost: { primary: 80, secondary: 10 }, buildTime: 22, building: 'airfield', supply: 2,
+  earth_glider: { faction: 'earth', role: 'air', name: 'Dawnglider Flock', cost: { primary: 80, secondary: 10 }, buildTime: 22, building: ['factory', 'airfield'], supply: 2,
     hp: 130, armor: 0, speed: 14, sight: 24, range: 9, dps: 13, cooldown: 0.5, r: 1.4, cls: 'veh', air: true, light: true, projectile: 'arrow',
     canHitAir: true, vs: { inf: 1.3, veh: 0.6, bld: 0.5, light: 1.0, air: 1.5 },
     abilities: ['ea_swoop', 'ea_updraft', 'ea_featherstorm', 'ea_flock'], blurb: 'Swarm of feathered gliders.' },
@@ -117,13 +117,13 @@ const B = {
     canHitAir: true, vs: { inf: 1.0, veh: 1.3, bld: 0.9, light: 1.1, air: 0.6 },
     abilities: ['st_chain', 'st_stormfront', 'st_capacitor', 'st_gustram'], blurb: 'Tri-mast lightning cruiser.' },
   storm_harvester: { faction: 'storm', role: 'harvester', name: 'Sand Skimmer', cost: { primary: 100, secondary: 0 }, buildTime: 36, building: 'factory', supply: 2,
-    hp: 240, armor: 0, speed: 10.5, sight: 16, range: 0, dps: 0, cooldown: 0, r: 2.0, cls: 'veh', harvester: true,
+    hp: 240, armor: 0, speed: 8, sight: 16, range: 0, dps: 0, cooldown: 0, r: 2.0, cls: 'veh', harvester: true,
     abilities: ['st_hv_sail', 'st_hv_static', 'st_hv_mirage', 'st_hv_featherweight'], blurb: 'Sail-skimmer ore runner.' },
   storm_caller: { faction: 'storm', role: 'special', name: 'Tempest Caller', cost: { primary: 130, secondary: 15 }, buildTime: 28, building: 'barracks', supply: 2,
     hp: 130, armor: 0, speed: 9, sight: 22, range: 14, dps: 12, cooldown: 1.2, r: 1.2, cls: 'inf', projectile: 'lightning',
     canHitAir: true, vs: { inf: 1.0, veh: 1.0, bld: 0.6, light: 1.0, air: 1.0 },
     abilities: ['st_lstorm', 'st_overcharge', 'st_dustdevil', 'st_staticfield'], blurb: 'Storm shaman; calls lightning and dust devils.' },
-  storm_kite: { faction: 'storm', role: 'air', name: 'Kitewing Skyraider', cost: { primary: 110, secondary: 15 }, buildTime: 26, building: 'airfield', supply: 2,
+  storm_kite: { faction: 'storm', role: 'air', name: 'Kitewing Skyraider', cost: { primary: 110, secondary: 15 }, buildTime: 26, building: ['factory', 'airfield'], supply: 2,
     hp: 160, armor: 0, speed: 16, sight: 26, range: 10, dps: 16, cooldown: 0.6, r: 1.5, cls: 'veh', air: true, light: true, projectile: 'lightning',
     canHitAir: true, vs: { inf: 1.2, veh: 1.0, bld: 0.6, light: 1.0, air: 1.0 },
     abilities: ['st_bolt', 'st_gust', 'st_jetstream', 'st_evasive'], blurb: 'Rider on a lightning kite.' },
@@ -197,7 +197,8 @@ export const roleOf = (faction, role) => unitsOf(faction).find(k => ROSTER[k].ro
 // What a production building can make for a faction (airfield units fall back to the factory).
 export function producedBy(faction, building, hasAirfield = false) {
   return unitsOf(faction).filter(k => {
-    const b = ROSTER[k].building;
-    return b === building || (!hasAirfield && building === 'factory' && b === 'airfield');
+    const bl = [].concat(ROSTER[k].building || []);
+    if (hasAirfield && bl.includes('airfield')) return building === 'airfield';
+    return bl.includes(building);
   });
 }

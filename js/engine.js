@@ -30,7 +30,10 @@ export async function createEngine() {
 
   const params = new URLSearchParams(location.search);
   // optional modules: start fetching in parallel right away, await where needed
-  const modelsP = import('./models.js');
+  const modelsP = import('./models.js').then(async (m) => { // GRAPHICS-B: preload PBR textures + cannon before spawning
+    try { await m.preloadModels?.(THREE); } catch (err) { console.warn('[engine] preloadModels failed', err?.message); }
+    return m;
+  });
   const charsP = import('./characters.js').then((c) => c.loadCharacters(null).then(() => c));
   modelsP.catch(() => {}); charsP.catch(() => {});
   const renderer = new THREE.WebGLRenderer({ canvas: glCanvas, antialias: true, powerPreference: 'high-performance' });
@@ -653,7 +656,7 @@ export async function createEngine() {
     inner.name = 'squad'; g.add(inner);
     const sq = { group: g, inner, soldiers: [], offsets: [], clip: null, forced: null, dying: 0, last: null, speed: 0, seen: false };
     for (const [x, z] of SQUAD_POS) {
-      const s = chars.makeSoldier(team);
+      const s = chars.makeSoldier(team, { leader: sq.soldiers.length === 0 }); // front soldier leads (horns on Clans)
       s.root.position.set(x, 0, z); s.root.rotation.y = (Math.random() - 0.5) * 0.3;
       s.delay = Math.random() * 0.35;
       inner.add(s.root, blob(0.5, x, z));

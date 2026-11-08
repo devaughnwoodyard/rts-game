@@ -208,6 +208,7 @@ function smokeMat(col = [0.16, 0.14, 0.13], alpha = 0.75, additive = false) {
   });
 }
 const MATS = {};
+let MAT_OVERRIDE = null;
 const PH = (f) => new URL(`../assets/ph/${f}`, import.meta.url).href;
 const PBR = {}, pending = [];
 function pbr(name, opts = {}) {
@@ -240,6 +241,11 @@ function mats(theme) {
     stone: stoneMat(),
     glow, fire: fireMat(), smoke: smokeMat(), ember: emberMat(), haze: smokeMat([0.55, 0.3, 0.12], 0.35, true), ...pbrMats(),
   };
+  else if (theme === 'X') { // volcanic: glossy obsidian/iron + dark basalt
+    const b = mats('C'), bas = pbr('rocky_terrain_02').clone(); bas.color.setRGB(0.9, 0.82, 0.8); bas.envMapIntensity = 0.5;
+    m = { ...b, stone: bas, solid: new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), metalness: 0.3, roughness: 0.18, envMap: env, envMapIntensity: 1.3 }),
+      haze: smokeMat([0.6, 0.55, 0.35], 0.3, false) };
+  }
   else m = {
     crystal: new T.MeshStandardMaterial({ color: 0x2fd8ff, emissive: 0x0f9fd8, emissiveIntensity: 1.0, metalness: 0.15, roughness: 0.25, transparent: true, opacity: 0.9, flatShading: true, envMap: env, envMapIntensity: 1.2 }),
     rock: new T.MeshStandardMaterial({ vertexColors: true, metalness: 0.05, roughness: 0.9, flatShading: true, emissive: 0x010101 }),
@@ -297,7 +303,7 @@ const polar = (r, a, y = 0) => [Math.sin(a) * r, y, Math.cos(a) * r]; // matches
 
 // ---------------------------------------------------------------- Kit: collects geometry per material slot, merges on build
 class Kit {
-  constructor(theme) { this.theme = theme; this.s = {}; this.st = [null]; this.parts = { smoke: [], ember: [], haze: [] }; }
+  constructor(theme) { this.theme = theme === 'C' && MAT_OVERRIDE ? MAT_OVERRIDE : theme; this.s = {}; this.st = [null]; this.parts = { smoke: [], ember: [], haze: [] }; }
   top() { return this.st[this.st.length - 1] || new T.Matrix4(); }
   push(p, r, s) { this.st.push(this.top().clone().multiply(M4(p, r, s))); return this; }
   pop() { this.st.pop(); return this; }
@@ -1032,7 +1038,8 @@ function C_turret_cannon() {
   return fin(g, 'turret_cannon', 3.6);
 }
 function addCannon(t, p, scale, elev = 0) { // glTF cannon_01 (barrel +Z in source) -> +X
-  const m = new T.Mesh(CANNON.geo, CANNON.mat); m.castShadow = m.receiveShadow = true;
+  if (F.dark && !CANNON.dark) { CANNON.dark = CANNON.mat.clone(); CANNON.dark.color.setHex(0x5a4a44); CANNON.dark.emissive = new T.Color(0x3a0800); }
+  const m = new T.Mesh(CANNON.geo, F.dark ? CANNON.dark : CANNON.mat); m.castShadow = m.receiveShadow = true;
   m.position.set(...p); m.rotation.set(0, PI / 2, 0); m.scale.setScalar(scale);
   if (elev) { const piv = new T.Group(); piv.position.set(...p); piv.rotation.z = elev; m.position.set(0, 0, 0); piv.add(m); t.add(piv); } else t.add(m);
 }
@@ -1253,7 +1260,10 @@ function F_cc() { // fortress-forge carved into a rock outcrop: crucible core + 
     k.add('stone', prism([[-0.2, 0], [1.9, 0], [0.1, 5.3], [-0.2, 5.4]], 1.0, 0.06), stoneC(F.rock), p, [0, a - PI / 2, 0]);
     k.add('solid', box(0.3, 0.25, 1.1), F.iron, polar(6.45, a, 3.6), [0, a - PI / 2, 0]); }
   // molten pour channels down the rock face
-  for (const a of [0.9, 2.6, 4.0, 5.4]) { fSeam(k, polar(4.95, a, 5.5), polar(6.5, a, 2.6), 0.14); fSeam(k, polar(6.75, a, 2.5), polar(7.9, a, 0.08), 0.14); }
+  const lw = F.lavaW || 0.14;
+  for (const a of [0.9, 2.6, 4.0, 5.4]) { fSeam(k, polar(4.95, a, 5.5), polar(6.5, a, 2.6), lw); fSeam(k, polar(6.75, a, 2.5), polar(7.9, a, 0.08), lw);
+    if (F.spires) { k.add('glow', box(lw * 4, 0.06, lw * 4), F.gold, polar(7.95, a, 0.04), 0, 1, { fx: 3.2 }); k.embers(polar(7.6, a, 0.3), 3, 1, 0.6); } }
+  if (F.spires) for (let i = 0; i < 7; i++) { const a = 0.3 + i / 7 * TAU, h = 3.5 + (i % 3) * 2.2; k.spike('solid', polar(6.0 + (i % 2) * 1.1, a, 2.0), [Math.sin(a) * 0.25, 1, Math.cos(a) * 0.25], h, 0.55, F.iron2); }
   // crucible core
   k.add('solid', cyl(3.2, 2.2, 1.6, 10), F.iron, [0, 6.4, 0]);
   k.add('solid', torus(3.15, 0.18, 4, 20), F.iron2, [0, 7.2, 0], [PI / 2, 0, 0]);
@@ -1386,6 +1396,7 @@ function F_turret_cannon_gltf() { // carved stone emplacement + forged-iron moun
   t.add('solid', cyl(1.05, 1.1, 0.2, 8), F.iron2, [0, 0.1, 0]);
   for (const sd of [1, -1]) { t.add('solid', prism([[-0.8, 0], [0.9, 0], [0.6, 0.85], [-0.6, 0.9]], 0.14, 0.03), F.rock2, [0.1, 0.15, sd * 0.85]); t.spike('solid', [0.85, 0.5, sd * 0.85], [1, 0.4, sd * 0.3], 0.6, 0.07, F.iron2); fRivets(t, [-0.5, 0.6, sd * 0.93], [0.5, 0.6, sd * 0.93], 4, 0.05); }
   t.add('glow', box(1.4, 0.05, 0.05), F.gold, [0.1, 0.25, 0.93], 0, 1, { fx: 3.3 }); t.add('glow', box(1.4, 0.05, 0.05), F.gold, [0.1, 0.25, -0.93], 0, 1, { fx: 3.6 });
+  if (F.dark) { t.add('glow', cyl(0.2, 0.2, 0.06, 10), F.molten, [2.23, 1.0, 0], [0, 0, PI / 2], 1, { fx: 3.5 }); t.embers([2.3, 1.0, 0], 3, 0.3, 0.5); }
   const tur = t.build('turret');
   addCannon(tur, [-0.15, 0.12, 0], 1.45);
   tur.position.y = 1.0; g.add(tur);
@@ -1546,6 +1557,20 @@ function decorForge(k, lx, lz, i, r, ry) {
   }
 }
 
+const VOLC = { sand: 0x4a4240, sand2: 0x5e5450, rock: 0x2e2826, rock2: 0x2a1c1a, iron: 0x2b2724, iron2: 0x161012, steel: 0x3e3634,
+  red: 0xa3241c, red2: 0x6e1a14, molten: 0xff5a12, gold: 0xffb340, brick: 0x8a6e66, lavaW: 0.3, spires: true, dark: true };
+const F0 = { ...F, lavaW: 0, spires: false, dark: false };
+function withPal(pal, fn) { return (v) => { Object.assign(F, pal); MAT_OVERRIDE = 'X'; try { return fn(v); } finally { Object.assign(F, F0); MAT_OVERRIDE = null; } }; }
+function decorVolcanic(k, lx, lz, i, r, ry) {
+  if (i % 3 === 0) { // glowing cracked-lava ground decal
+    let p = [lx, 0.04, lz];
+    for (let j = 0; j < 6; j++) { const a = ry + (r() - 0.5) * 1.6, l = 0.8 + r() * 1.2, q = [p[0] + Math.cos(a) * l, 0.04, p[2] + Math.sin(a) * l]; k.bar('glow', p, q, 0.12 + r() * 0.1, j % 2 ? F.molten : F.gold, { fx: 3 + r() * 0.9 }); p = q; }
+    k.embers([lx, 0.2, lz], 4, 2.5, 0.6);
+  } else if (i % 3 === 1) { // obsidian shards
+    for (let j = 0; j < 5; j++) k.spike('solid', [lx + (r() - 0.5) * 2, 0, lz + (r() - 0.5) * 2], [(r() - 0.5) * 0.6, 1, (r() - 0.5) * 0.6], 0.8 + r() * 2.2, 0.25 + r() * 0.2, F.iron2);
+  } else decorForge(k, lx, lz, i, r, ry);
+  if (i % 4 === 2) k.haze([lx, 0.3, lz], 3, 1.4); // sulfur/steam vent puffs
+}
 // ---------------------------------------------------------------- registry
 function fin(g, kind, height) { g.userData.kind = kind; g.userData.height = height; g.name = 'model_' + kind; return g; }
 // Theme registry: each team-1 look is a swappable builder set. mat = material family, gltf = overrides when the cannon glTF is loaded.
@@ -1554,9 +1579,12 @@ const THEMES = {
   scrap: { mat: 'C', tank: C_tank, raider: C_raider, harvester: C_harvester, cc: C_cc, barracks: C_barracks, factory: C_factory, turret_mg: C_turret_mg, turret_cannon: C_turret_cannon, artillery: C_artillery, wall: C_wall, gate: C_gate, decor: decorScrap, variants: { wall: 4 } },
   forge: { mat: 'C', tank: F_tank, raider: F_raider, harvester: F_harvester, cc: F_cc, barracks: F_barracks, factory: F_factory, turret_mg: F_turret_mg, turret_cannon: F_turret_cannon, artillery: F_artillery, wall: F_wall, gate: F_gate, decor: decorForge, variants: { wall: 3 },
     gltf: { turret_cannon: F_turret_cannon_gltf, artillery: F_artillery_gltf } },
+  volcanic: { mat: 'X', tank: withPal(VOLC, F_tank), raider: withPal(VOLC, F_raider), harvester: withPal(VOLC, F_harvester), cc: withPal(VOLC, F_cc), barracks: withPal(VOLC, F_barracks),
+    factory: withPal(VOLC, F_factory), turret_mg: withPal(VOLC, F_turret_mg), turret_cannon: withPal(VOLC, F_turret_cannon), artillery: withPal(VOLC, F_artillery), wall: withPal(VOLC, F_wall), gate: withPal(VOLC, F_gate),
+    decor: withPal(VOLC, (a) => a), variants: { wall: 3 }, gltf: { turret_cannon: withPal(VOLC, F_turret_cannon_gltf), artillery: withPal(VOLC, F_artillery_gltf) } },
   neutral: { mat: 'N', crystal: N_crystal, rock: N_rock, variants: { crystal: 4, rock: 4 } },
 };
-const TEAM_THEME = { 0: 'cyber', 1: 'forge', '-1': 'cyber' };
+const TEAM_THEME = { 0: 'cyber', 1: 'volcanic', '-1': 'cyber' };
 // Swap a team's look (call before spawning, or existing meshes keep the old look). Returns false for unknown themes.
 export function setTeamTheme(team, name) { if (!THEMES[name]) return false; TEAM_THEME[team] = name; return true; }
 export function registerTheme(name, set) { THEMES[name] = set; }
@@ -1583,7 +1611,10 @@ export function updateModels(dt, t) {
 // and the defense slots (turrets at R15-17 near the front, artillery at R11-12 at +-90deg and 180deg).
 export function decorateBase(THREE, scene, team, x, z) {
   T = T || THREE;
-  const th = THEMES[TEAM_THEME[team] || 'cyber'], theme = th.mat, k = new Kit(theme), r = rng(team === 1 ? 777 : 555);
+  const tn = TEAM_THEME[team] || 'cyber', th = THEMES[tn], volc = tn === 'volcanic';
+  if (volc) { Object.assign(F, VOLC); MAT_OVERRIDE = 'X'; }
+  try {
+  const theme = th.mat, k = new Kit(theme), r = rng(team === 1 ? 777 : 555);
   const s = x < 0 ? 1 : -1;
   const blocks = [{ x, z, r: 9.5 }, { x: x + s * 10, z: z + s * 10, r: 6.5 }, { x: x + s * 10, z: z - s * 10, r: 6.5 }];
   const face = Math.atan2(-z, -x);
@@ -1598,12 +1629,13 @@ export function decorateBase(THREE, scene, team, x, z) {
     if (spots.some(p => Math.hypot(px - p[0], pz - p[1]) < 3.2)) continue;
     spots.push([px, pz]);
   }
-  const dec = THEMES[TEAM_THEME[team] || 'cyber'].decor;
+  const dec = volc ? decorVolcanic : th.decor;
   spots.forEach(([px, pz], i) => dec(k, px - x, pz - z, i, r, r() * TAU));
   const g = k.build('decor_' + theme); g.position.set(x, 0, z); g.userData.kind = 'decor';
   g.traverse(o => { if (o.isMesh) o.raycast = () => {}; });
   scene?.add(g);
   return g;
+  } finally { if (volc) { Object.assign(F, F0); MAT_OVERRIDE = null; } }
 }
 
 // Loads the Poly Haven PBR textures and the cannon_01 glTF. Safe to call more than once; never throws.

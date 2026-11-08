@@ -27,7 +27,7 @@ const CLIPS = [ // [output name, source fbx, opts]
 
 // vertex colour RGBA: rgb = albedo, a = 1 → multiplied by team colour at runtime, 0 → fixed colour
 const C = {
-  team: [1, 1, 1, 1], teamDk: [0.62, 0.62, 0.66, 1], teamLt: [1, 1, 1, 0.55],
+  team: [1, 1, 1, 1], teamMid: [0.8, 0.8, 0.8, 1], teamDk: [0.62, 0.62, 0.66, 1], teamLt: [1, 1, 1, 0.55],
   suit: [0.16, 0.17, 0.19, 0], gun: [0.2, 0.21, 0.23, 0], gunLt: [0.42, 0.44, 0.47, 0],
   trim: [0.78, 0.8, 0.82, 0], glow: [0.55, 0.95, 1.0, 0],
 };
@@ -97,7 +97,7 @@ window.convert = async () => {
   blk('Spine2', RB(47, 32, 31, 7), [0, 4, 1.5], C.team);               // chest
   blk('Spine2', RB(34, 17, 6, 2.5), [0, 6, 16.5], C.teamLt, { rot: [-0.18, 0, 0] }); // chest plate
   blk('Spine2', RB(16, 4, 3, 1), [0, 0, 19.2], C.glow);                // chest light strip
-  blk('Spine1', RB(36, 13, 25, 4), [0, 0, 1], C.teamDk);               // abdomen plates
+  blk('Spine1', RB(36, 13, 25, 4), [0, 0, 1], C.teamMid);               // abdomen plates
   // backpack
   blk('Spine2', RB(36, 36, 17, 4), [0, 4, -22], C.gun);
   blk('Spine2', RB(26, 8, 4, 1.5), [0, 14, -31.5], C.teamDk);
@@ -114,7 +114,7 @@ window.convert = async () => {
   for (const s of ['Left', 'Right']) {
     const sx = s === 'Left' ? 1 : -1;
     seg(s + 'Arm', s + 'ForeArm', 15, 15, C.suit, { ext: 2 });
-    seg(s + 'Arm', s + 'ForeArm', 17, 17, C.teamDk, { ext: -12, off: [0, 3, 0] });          // upper-arm plate
+    seg(s + 'Arm', s + 'ForeArm', 17, 17, C.teamMid, { ext: -12, off: [0, 3, 0] });          // upper-arm plate
     seg(s + 'ForeArm', s + 'Hand', 18.5, 18.5, C.team, { ext: 0, round: 3 });                       // gauntlet
     blk(s + 'Hand', RB(12, 10, 12, 2.5), [sx * 6, -1, 0], C.suit);                               // fist
     // pauldron: big rounded shell over the shoulder joint
@@ -126,7 +126,7 @@ window.convert = async () => {
   // ---- legs
   for (const s of ['Left', 'Right']) {
     seg(s + 'UpLeg', s + 'Leg', 21, 22, C.team, { ext: -2, round: 4 });            // thigh
-    seg(s + 'Leg', s + 'Foot', 18, 19, C.teamDk, { ext: 2, round: 3.5 });            // shin
+    seg(s + 'Leg', s + 'Foot', 18, 19, C.teamMid, { ext: 2, round: 3.5 });            // shin
     blk(s + 'Leg', RB(13, 13, 6, 2), [0, -2, 11], C.teamLt, { rot: [0.1, 0, 0] });    // knee pad
     blk(s + 'Foot', RB(17, 12, 29, 3.5), [0, -3, 7.5], C.suit);                    // boot
     blk(s + 'Foot', RB(19, 5, 17, 1.5), [0, 2, 0], C.teamDk);                    // ankle cuff

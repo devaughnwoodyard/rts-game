@@ -629,7 +629,7 @@ export function createFx(world) {
       for (let k = 1; k <= n; k++) {
         const f = k / n, j = k < n ? jit : 0;
         const x = A.x + (B.x - A.x) * f + rand(-j, j), y = A.y + (B.y - A.y) * f + rand(-j, j) * 0.7, z = A.z + (B.z - A.z) * f + rand(-j, j);
-        qseg(px, py, pz, x, y, z, w * 3.2, r * 0.5, g * 0.6, b, a * 0.35);
+        qseg(px, py, pz, x, y, z, w * 2.2, r * 0.35, g * 0.5, b, a * 0.3);
         qseg(px, py, pz, x, y, z, w, r, g, b, a);
         if (Math.random() < 0.18 && k < n) qseg(x, y, z, x + rand(-1.4, 1.4), y + rand(-1, 0.6), z + rand(-1.4, 1.4), w * 0.6, r, g, b, a * 0.7);
         px = x; py = y; pz = z;
@@ -939,7 +939,7 @@ export function createFx(world) {
       if (f.t >= f.dur || (f.ent && !alive(f.ent))) { fxs.splice(i, 1); continue; }
       const u = f.t / f.dur, a = 1 - u;
       switch (f.type) {
-        case 'bolt': jag(f.pts, 0.22, f.col[0], f.col[1], f.col[2], Math.min(1, a * 1.6), 0.55); break;
+        case 'bolt': jag(f.pts, 0.2, f.col[0], f.col[1], f.col[2], Math.min(1, a * 1.6), 0.9); break;
         case 'charge': {
           const y = f.y ?? 1.0, fa = a * a;
           qseg(f.ax, y, f.az, f.bx, y, f.bz, f.w, f.col[0], f.col[1] * 0.8, f.col[2] * 0.6, fa * 0.6);

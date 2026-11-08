@@ -28,7 +28,7 @@ export function fogPatch(sh, U) {
     vGW = (modelMatrix * tWp4).xyz; }`);
   }
   sh.fragmentShader = 'varying vec3 vGW;\n' + FOG_GLSL + sh.fragmentShader.replace('#include <opaque_fragment>',
-    '#include <opaque_fragment>\n  gl_FragColor.rgb *= 1.0 - fogAlpha(vGW.xz);');
+    '#include <opaque_fragment>\n  { float tFa = 1.0 - fogAlpha(vGW.xz); gl_FragColor.rgb *= tFa * tFa; }');
 }
 
 export function createFogView(world, U) {
@@ -40,6 +40,7 @@ export function createFogView(world, U) {
     fragmentShader: `varying vec3 vGW;\n${FOG_GLSL}
 void main() {
   float a = fogAlpha(vGW.xz);
+  vec2 o = max(abs(vGW.xz) - uFogXf.zw, 0.0); a = max(a, uFogOn * 0.55 * smoothstep(0.0, 40.0, length(o)));
   vec2 f = texture2D(tFog, (vGW.xz + uFogXf.zw) * uFogXf.xy).rg;
   vec3 c = mix(vec3(0.01, 0.015, 0.025), vec3(0.04, 0.045, 0.05), f.g);
   gl_FragColor = vec4(c, a);
@@ -55,7 +56,7 @@ void main() {
     U.tFog.value = tex;
     const W = cols * fog.cell, H = rows * fog.cell;
     U.uFogXf.value.set(1 / W, 1 / H, world.map.w / 2, world.map.h / 2);
-    mesh = new THREEm.Mesh(new THREEm.PlaneGeometry(world.map.w, world.map.h).rotateX(-Math.PI / 2), mat);
+    mesh = new THREEm.Mesh(new THREEm.PlaneGeometry(world.map.w + 900, world.map.h + 900).rotateX(-Math.PI / 2), mat);
     mesh.position.y = 0.15; mesh.renderOrder = 6; mesh.name = 'fogOverlay'; mesh.raycast = () => {}; mesh.frustumCulled = false;
     world.scene.add(mesh);
   }

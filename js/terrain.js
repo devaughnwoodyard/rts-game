@@ -80,9 +80,10 @@ const LAYERS = [
   { f: 'tex/rusty_metal_02', tile: 6, lum: 0.5, tint: [1, 1, 1] },                     // 11 rust (cranes)
   { f: 'tex/box_profile_metal_sheet', tile: 5, lum: 0.55, tint: [1, 1, 1], gray: 1 },  // 12 corrugated (containers)
   { f: 'tex/concrete_panels', tile: 8, lum: 0.55, tint: [1, 1, 1] },                   // 13 concrete panels (ruins)
+  { f: 'ph/dry_ground_rocks', tile: 12, lum: 0.44, tint: [1.0, 0.95, 0.88] },           // 14 badlands dirt + pebbles
 ];
 const NL = LAYERS.length;
-const L = { CONC: 0, ASPH: 1, BASALT: 2, CRACK: 3, FOREST: 4, GRASS: 5, SAND: 6, REDROCK: 7, GRAVEL: 8, STRATA: 9, BURN: 10, RUST: 11, CORR: 12, PANEL: 13 };
+const L = { DIRT: 14, CONC: 0, ASPH: 1, BASALT: 2, CRACK: 3, FOREST: 4, GRASS: 5, SAND: 6, REDROCK: 7, GRAVEL: 8, STRATA: 9, BURN: 10, RUST: 11, CORR: 12, PANEL: 13 };
 
 function loadImage(url) {
   return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('load ' + url)); im.src = url; });
@@ -279,7 +280,7 @@ ${NOISE_GLSL}
   float tW[5]; tW[0] = tSp.r; tW[1] = tSp.g; tW[2] = tSp.b; tW[3] = tSp.a; tW[4] = max(0.0, 1.0 - tSp.r - tSp.g - tSp.b - tSp.a);
   int tI1 = 0; for (int i = 1; i < 5; i++) if (tW[i] > tW[tI1]) tI1 = i;
   int tI2 = tI1 == 0 ? 1 : 0; for (int i = 0; i < 5; i++) if (i != tI1 && tW[i] > tW[tI2]) tI2 = i;
-  int tPL[5] = int[5](0, 2, 4, 6, 8); int tVL[5] = int[5](1, 3, 5, 6, 9);
+  int tPL[5] = int[5](0, 2, 4, 6, 8); int tVL[5] = int[5](1, 3, 5, 6, 14);
   int tP1 = tPL[tI1], tV1 = tVL[tI1], tP2 = tPL[tI2];
   float tVw = smoothstep(0.4, 0.6, tMk.r);
   if (tI1 == 1) tVw = smoothstep(0.5, 0.75, tMk.r) * 0.8;
@@ -445,7 +446,7 @@ export async function createTerrain(world) {
   const trees = [], cones = [], bushes = []; // {x,z,s,h,c,ry}
 
   // ---------- NW: forest + red mountainside ----------
-  const red = (k = 1) => (x, y, z, ly) => { const b = 0.5 + 0.5 * Math.sin(y * 1.3 + vnoise(x * 0.2, z * 0.2) * 3); return [(0.95 + 0.12 * b) * k, (0.62 + 0.08 * b) * k, (0.5 + 0.05 * b) * k]; };
+  const red = (k = 1) => (x, y, z, ly) => { const b = 0.5 + 0.5 * Math.sin(y * 1.3 + vnoise(x * 0.2, z * 0.2) * 3); return [(0.78 + 0.1 * b) * k, (0.5 + 0.07 * b) * k, (0.4 + 0.05 * b) * k]; };
   function cliff(bld, x, z, r, h, seed, col, layer = L.REDROCK) {
     bld.add(columnGeo(seed, 10, 5, 0.28, 0.25), M4(x, -0.3, z, R() * 6, r, h, r * (0.75 + R() * 0.4)), col, layer);
     for (let k = 0; k < 3; k++) { // talus
@@ -479,7 +480,7 @@ export async function createTerrain(world) {
     cliff(B[2], p.x, p.z, r, 6 + R() * 9, i + 77, red()); obs(p.x, p.z, r * 1.05, 'cliff'); feats.push({ x: p.x, z: p.z, r, t: 'cliff' });
   }
   // groves
-  const greens = [[0.035, 0.085, 0.03], [0.05, 0.11, 0.032], [0.08, 0.13, 0.035], [0.13, 0.14, 0.04], [0.03, 0.07, 0.035]];
+  const greens = [[0.018, 0.06, 0.014], [0.03, 0.08, 0.014], [0.055, 0.1, 0.016], [0.1, 0.11, 0.018], [0.015, 0.05, 0.02]];
   for (let i = 0; i < 18; i++) {
     const r = 7 + R() * 7, p = place(2, r, 0.55, 400, 8); if (!p) continue;
     obs(p.x, p.z, r * 0.9, 'grove'); feats.push({ x: p.x, z: p.z, r, t: 'grove' });
@@ -822,7 +823,7 @@ export async function createTerrain(world) {
     im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
     im.castShadow = shadow; im.receiveShadow = true; im.name = name; im.computeBoundingSphere(); group.add(im);
   }
-  const vegMat = (k) => fogged(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, flatShading: true }), U, k);
+  const vegMat = (k) => { const m = fogged(new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, flatShading: true }), U, k); m.envMapIntensity = 0.25; m.userData.envBase = 0.25; return m; };
   const coneGeo = (() => {
     const a = new THREE.ConeGeometry(1, 0.62, 7, 1).translate(0, 0.31 + 0.25, 0), b = new THREE.ConeGeometry(0.75, 0.5, 7, 1).translate(0, 0.25 + 0.55, 0);
     const c = new THREE.ConeGeometry(0.48, 0.42, 7, 1).translate(0, 0.21 + 0.82, 0);
@@ -858,7 +859,7 @@ export async function createTerrain(world) {
     for (let i = 0; i < 5; i++) target.r += TINT[i][0] * w[i], target.g += TINT[i][1] * w[i], target.b += TINT[i][2] * w[i];
     const k = Math.min(1, (dt || 0.016) * 1.5);
     tint.lerp(target, k);
-    hemiTint.setRGB(1 + (tint.r - 1) * 0.6, 1 + (tint.g - 1) * 0.6, 1 + (tint.b - 1) * 0.6);
+    hemiTint.setRGB(1 + (tint.r - 1) * 0.45, 1 + (tint.g - 1) * 0.45, 1 + (tint.b - 1) * 0.45);
     world.regionTint.weights = w;
     applyTint();
     fogView.update(dt);

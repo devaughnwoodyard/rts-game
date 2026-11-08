@@ -209,10 +209,13 @@ function matrix(mix, n = N) {
   return M;
 }
 const combatKinds = () => F.flatMap(f => FACTIONS[f].units.filter(k => ROSTER[k].role !== 'harvester'));
-function monoEff(k, n = Math.max(5, N >> 3)) {
-  const f = ROSTER[k].faction, opp = F.filter(x => x !== f);
+// Cost-efficiency "vs everything": mono army of k vs a mono army of every other faction's combat unit at equal
+// cost; mean win rate. (Harvesters excluded.)
+function monoEff(k, n = Math.max(3, N >> 4)) {
+  const f = ROSTER[k].faction;
+  const opp = combatKinds().filter(o => ROSTER[o].faction !== f);
   let s = 0;
-  for (const o of opp) s += rate(() => mono(k), () => buildArmy(o, MIXES.combined), n);
+  for (const o of opp) s += rate(() => mono(k), () => mono(o), n);
   return s / opp.length;
 }
 const pct = (v) => v == null ? '  -  ' : (v * 100).toFixed(0).padStart(4) + '%';
@@ -325,7 +328,7 @@ if (args.tune) M = tune(); else { apply(); M = matrix('combined'); }
 printMatrix(`COMBINED ARMS, ${BUDGET} crystals, n=${2 * N}/pair`, M);
 if (!args.quick) {
   for (const mix of ['noair', 'infantry', 'armor']) printMatrix(`${mix.toUpperCase()} mix`, matrix(mix, Math.max(10, N >> 1)));
-  console.log('\nUnit cost-efficiency (mono army vs other factions\' combined arms):');
+  console.log('\nUnit cost-efficiency (mono army vs every opposing unit, equal cost):');
   const rows = combatKinds().map(k => [k, monoEff(k)]).sort((a, b) => b[1] - a[1]);
   for (const [k, e] of rows) console.log(`  ${k.padEnd(22)} ${pct(e)}${e > 0.6 ? '  <-- over 60%' : ''}`);
 }

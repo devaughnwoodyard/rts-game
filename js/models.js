@@ -5,6 +5,7 @@
 //   makeModel(THREE, kind, team)            -> Object3D | null  (models face +X; userData.turret on turreted kinds)
 //   updateModels(dt, t)                     -> drives shader time (neon blink/flicker, holo spin, flames, smoke)
 //   decorateBase(THREE, scene, team, x, z)  -> Group of non-entity props around a cc (also added to scene)
+//   preloadModels(THREE)                    -> async: loads Poly Haven PBR textures + cannon_01 glTF (await before spawning)
 // Every model = a few merged meshes (one per material slot), templates cached per kind/theme and cloned.
 // Animation is all in shaders off one shared uTime uniform, so updateModels is O(1).
 // TODO.md (models): 'warden' returns null (GRAPHICS-A owns animated soldiers). 'rock' is unit-radius: scale by obstacle r.
@@ -192,6 +193,19 @@ function smokeMat() {
   });
 }
 const MATS = {};
+const PH = (f) => new URL(`../assets/ph/${f}`, import.meta.url).href;
+const PBR = {}, pending = [];
+function pbr(name, opts = {}) {
+  if (PBR[name]) return PBR[name];
+  const L = new T.TextureLoader(), ld = (f, srgb) => { const t = L.load(PH(`${name}/${f}`), undefined, undefined, () => console.warn('[models] missing', name, f));
+    t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = 4; if (srgb) t.colorSpace = T.SRGBColorSpace; return t; };
+  const map = ld('diff.jpg', true), arm = ld('arm.jpg', false);
+  return (PBR[name] = new T.MeshStandardMaterial({ vertexColors: true, map, normalMap: ld('nor_gl.jpg', false), normalScale: new T.Vector2(1, 1),
+    roughnessMap: arm, metalnessMap: arm, roughness: 1, metalness: opts.metal ?? 0, envMap: envTex(), envMapIntensity: 0.3, side: opts.side ?? T.FrontSide }));
+}
+function pbrMats() { return { brick: pbr('medieval_red_brick'), denim: pbr('denim_fabric_04', { side: T.DoubleSide }), jacq: pbr('quatrefoil_jacquard_fabric', { side: T.DoubleSide }) }; }
+const UVK = { brick: 0.42, denim: 0.45, jacq: 0.6 };
+let CANNON = null;
 function mats(theme) {
   if (MATS[theme]) return MATS[theme];
   const env = envTex();
@@ -202,11 +216,12 @@ function mats(theme) {
     glow,
     holo: patchFx(new T.MeshBasicMaterial({ vertexColors: true, map: holoTex(), transparent: true, opacity: 0.92, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false }), 'holo'),
     energy: patchFx(new T.MeshBasicMaterial({ vertexColors: true, map: scanTex(), transparent: true, opacity: 0.5, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, toneMapped: false }), 'energy'),
+    jacq: pbrMats().jacq,
   };
   else if (theme === 'C') m = {
     scrap: new T.MeshStandardMaterial({ vertexColors: true, map: rustTex(), metalness: 0.45, roughness: 0.7, envMap: env, envMapIntensity: 0.4 }),
     solid: new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), metalness: 0.3, roughness: 0.7, envMap: env, envMapIntensity: 0.35 }),
-    glow, fire: fireMat(), smoke: smokeMat(),
+    glow, fire: fireMat(), smoke: smokeMat(), ...pbrMats(),
   };
   else m = {
     crystal: new T.MeshStandardMaterial({ color: 0x2fd8ff, emissive: 0x0f9fd8, emissiveIntensity: 1.0, metalness: 0.15, roughness: 0.25, transparent: true, opacity: 0.9, flatShading: true, envMap: env, envMapIntensity: 1.2 }),
@@ -244,6 +259,14 @@ function prism(pts, depth, b = 0.05) { // side profile in XY (x forward, y up), 
     g.translate(0, 0, -dd / 2); return g;
   });
 }
+function cloth(w, h, sag = 0.3, wave = 0) { // plane in XY, sagging/waving along Z
+  return gc(`cl${w},${h},${sag},${wave}`, () => {
+    const g = new T.PlaneGeometry(w, h, 10, 8), p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) { const u = p.getX(i) / w + 0.5, v = p.getY(i) / h + 0.5;
+      p.setZ(i, -sag * Math.sin(PI * u) * Math.sin(PI * v) + wave * Math.sin(u * 9 + v * 4) * (1 - v * 0.5)); }
+    g.computeVertexNormals(); return g;
+  });
+}
 function M4(p = [0, 0, 0], r = [0, 0, 0], s = [1, 1, 1]) {
   if (typeof s === 'number') s = [s, s, s];
   return new T.Matrix4().compose(new T.Vector3(p[0], p[1], p[2]), new T.Quaternion().setFromEuler(new T.Euler(r[0], r[1], r[2])), new T.Vector3(s[0], s[1], s[2]));
@@ -274,7 +297,7 @@ class Kit {
     const uv = new Float32Array(n * 2);
     if (uvSrc) { const [u0, v0, u1, v1] = o.uv; for (let i = 0; i < n; i++) { uv[i * 2] = u0 + uvSrc.getX(i) * (u1 - u0); uv[i * 2 + 1] = v0 + uvSrc.getY(i) * (v1 - v0); } }
     else for (let i = 0; i < n; i++) {
-      const ax = Math.abs(nor.getX(i)), ay = Math.abs(nor.getY(i)), az = Math.abs(nor.getZ(i)), k = 0.32;
+      const ax = Math.abs(nor.getX(i)), ay = Math.abs(nor.getY(i)), az = Math.abs(nor.getZ(i)), k = UVK[slot] || 0.32;
       const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
       if (ax >= ay && ax >= az) { uv[i * 2] = z * k; uv[i * 2 + 1] = y * k; } else if (ay >= az) { uv[i * 2] = x * k; uv[i * 2 + 1] = z * k; } else { uv[i * 2] = x * k; uv[i * 2 + 1] = y * k; }
     }
@@ -307,7 +330,9 @@ class Kit {
     return this;
   }
   smoke(p, n = 4, size = 1) { const v = new T.Vector3(...p).applyMatrix4(this.top()); for (let i = 0; i < n; i++) this.smokes.push([v.x, v.y, v.z, i / n + Math.random() * 0.1, size]); return this; }
-  sign(p, ry, w, h, cell, fx = 2, color = 0xffffff, rx = 0) { return this.add('holo', plane(w, h), color, p, [rx, ry, 0], [1, 1, 1], { uv: cellUV(cell), fx: fx + Math.random() * 0.9, smooth: true }); }
+  sign(p, ry, w, h, cell, fx = 2, color = 0xffffff, rx = 0) {
+    if (this.theme === 'V') this.add('lit', box(w + 0.12, h + 0.12, 0.06), V.glass, [p[0] - Math.sin(ry) * 0.06, p[1], p[2] - Math.cos(ry) * 0.06], [rx, ry, 0]);
+    return this.add('holo', plane(w, h), color, p, [rx, ry, 0], [1, 1, 1], { uv: cellUV(cell), fx: fx + Math.random() * 0.9, smooth: true }); }
   build(name) {
     const grp = new T.Group(); if (name) grp.name = name;
     const M = mats(this.theme);

@@ -71,6 +71,43 @@ export async function createEngine() {
     const pm = new THREE.PMREMGenerator(renderer);
     envMap = pm.fromScene(es, 0.02).texture; pm.dispose();
   } catch (err) { console.warn('[engine] env map failed', err?.message); }
+  scene.environment = envMap; // replaced by the HDRI below once it loads
+
+  // Image-based lighting: Poly Haven HDRI → PMREM → scene.environment (not shown as background).
+  // r160 has no scene.environmentIntensity, so envMapIntensity is scaled per material (trackEnv):
+  // ENV_I for materials using scene.environment, and everything dims with world.ui.nightFactor.
+  const HDRI = { harbour: 'small_harbour_morning_1k.hdr', resting: 'resting_place_2_1k.hdr' };
+  const ENV_I = 0.6, envMats = new Set();
+  let envNight = 1;
+  function applyEnv(m) { m.envMapIntensity = m.userData.envBase * (m.envMap ? 1 : ENV_I) * envNight; }
+  function trackEnv(root) {
+    root?.traverse?.((o) => {
+      const ms = o.material; if (!ms) return;
+      for (const m of Array.isArray(ms) ? ms : [ms]) {
+        if (!(m.isMeshStandardMaterial) || envMats.has(m)) continue;
+        if (m.userData.envBase === undefined) m.userData.envBase = m.envMapIntensity;
+        envMats.add(m); applyEnv(m);
+      }
+    });
+  }
+  function updateEnvNight() {
+    const nf = Math.min(1, Math.max(0, +world.ui?.nightFactor || 0)), v = 1 - 0.7 * nf;
+    if (Math.abs(v - envNight) < 0.01) return;
+    envNight = v; for (const m of envMats) applyEnv(m);
+  }
+  (async () => {
+    try {
+      const { RGBELoader } = await import('three/addons/loaders/RGBELoader.js');
+      const hdr = await new RGBELoader().loadAsync('assets/ph/hdri/' + (HDRI[params.get('hdri')] || HDRI.resting));
+      const pm = new THREE.PMREMGenerator(renderer);
+      scene.environment = pm.fromEquirectangular(hdr).texture; pm.dispose(); hdr.dispose();
+    } catch (err) { console.warn('[engine] HDRI failed, keeping gradient env:', err?.message || err); }
+  })();
+
+  // GRAPHICS-B themed models (optional; primitives below are the fallback)
+  let models = null;
+  try { models = await import('./models.js'); if (typeof models.makeModel !== 'function') models = null; }
+  catch (err) { console.warn('[engine] models.js not loaded, using primitives:', err?.message || err); }
 
   const world = {
     THREE, scene, renderer, camera: null,
@@ -229,14 +266,15 @@ export async function createEngine() {
   // Ground: one plane 3x the map, same texture everywhere; a shader patch darkens + desaturates
   // everything outside the playable rect so the edge reads as "out of bounds", not a cliff.
   const EXT = 3, TILE = { x: 6, z: 4 }; // texture repeats across the playable map
-  function prepTex(t) {
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(TILE.x * EXT, TILE.z * EXT);
-    t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
+  const PH_TILE = { x: 12, z: 8 }; // rocky_terrain_02 PBR set: rocks read at tactical zoom
+  function prepTex(t, tile = TILE, srgb = true) {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(tile.x * EXT, tile.z * EXT);
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
     t.needsUpdate = true;
     return t;
   }
   const groundTex = prepTex(new THREE.CanvasTexture(groundCanvas()));
-  const groundMat = new THREE.MeshLambertMaterial({ map: groundTex });
+  const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 1, metalness: 0 });
   // average linear luminance of the ground texture, so the detail layers below are brightness-neutral
   const uAvg = { value: 0.35 };
   function measureTex(img) {
@@ -297,7 +335,20 @@ export async function createEngine() {
   world.setGroundTexture = (url) => new THREE.TextureLoader().load(url, (t) => {
     prepTex(t); measureTex(t.image); groundMat.map = t; groundMat.needsUpdate = true;
   }, undefined, () => console.warn('[engine] ground texture failed to load, keeping procedural:', url));
-  world.setGroundTexture('assets/ground.jpg');
+  // Ground = Poly Haven rocky_terrain_02 (diff + GL normal + ARM: R=AO, G=roughness; metalness skipped),
+  // warm-tinted toward the desert palette. Falls back to assets/ground.jpg, then to the procedural canvas.
+  {
+    const L = new THREE.TextureLoader(), base = 'assets/ph/rocky_terrain_02/';
+    const load = (f) => new Promise((res, rej) => L.load(base + f, res, undefined, rej));
+    Promise.all([load('diff.jpg'), load('nor_gl.jpg'), load('arm.jpg')]).then(([d, n, a]) => {
+      prepTex(d, PH_TILE); prepTex(n, PH_TILE, false); prepTex(a, PH_TILE, false);
+      measureTex(d.image);
+      groundMat.map = d; groundMat.normalMap = n; groundMat.normalScale.set(1, 1);
+      groundMat.aoMap = a; groundMat.aoMapIntensity = 0.8; groundMat.roughnessMap = a; groundMat.roughness = 1;
+      groundMat.color.set(0xe8b98a);
+      groundMat.needsUpdate = true;
+    }).catch(() => { console.warn('[engine] PBR ground failed, using ground.jpg'); world.setGroundTexture('assets/ground.jpg'); });
+  }
 
   // ---------- Obstacles ----------
   const rockMat = new THREE.MeshLambertMaterial({ color: 0x8a8580, flatShading: true });
@@ -325,6 +376,8 @@ export async function createEngine() {
         const a = r() * 6.28; sm.position.set(Math.cos(a) * rad * 0.8, rad * 0.25, Math.sin(a) * rad * 0.8);
         sm.rotation.set((r() - 0.5) * 0.5, r() * 6, (r() - 0.5) * 0.5); grp.add(sm);
       }
+      const mdl = models?.makeModel?.(THREE, 'rock', -1); // GRAPHICS-B themed rock (unit radius)
+      if (mdl) { grp.clear(); mdl.scale.setScalar(rad); mdl.rotation.y = Math.random() * 6.28; grp.add(mdl); trackEnv(mdl); }
       grp.position.set(x, 0, z); grp.userData.kind = 'rock';
       grp.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       scene.add(grp);
@@ -599,8 +652,12 @@ export async function createEngine() {
     if (kind === 'warden' && chars) {
       try { g = makeSquad(team); } catch (err) { console.warn('[engine] squad build failed, primitive fallback:', err?.message); g = null; }
     }
+    if (!g && models) {
+      try { g = models.makeModel(THREE, kind, team) || null; } catch (err) { console.warn('[engine] makeModel failed', kind, err?.message); g = null; }
+    }
     if (!g) g = makePrimitive(kind, team);
     g.userData.kind = kind;
+    trackEnv(g);
     g.userData.height ??= HEIGHT[kind] ?? 2;
     return decorate(g, kind);
   };
@@ -937,6 +994,8 @@ export async function createEngine() {
     seen.tap = input.tap; seen.command = input.command; seen.drag = input.drag;
     updateCamera();
     try { updateSquads(world.clock.dt); } catch (err) { console.error('[engine] squad anim error', err); }
+    try { models?.updateModels?.(world.clock.dt, world.clock.t); } catch (err) { console.error('[engine] updateModels error', err); }
+    updateEnvNight();
     fitShadow();
     renderer.render(scene, world.camera);
     drawOverlay();
@@ -945,6 +1004,11 @@ export async function createEngine() {
 
   resize();
   world.setView('tactical');
+  trackEnv(ground);
+  if (models?.decorateBase) for (const [team, b] of BASES.entries()) {
+    try { const d = models.decorateBase(THREE, scene, team, b.x, b.z); d?.traverse?.((o) => { if (o.isMesh && !o.material?.transparent) { o.castShadow = true; o.receiveShadow = true; } }); trackEnv(d); }
+    catch (err) { console.warn('[engine] decorateBase failed', err?.message); }
+  }
 
   // ---------- Demo (?demo=1): one mesh of every kind ----------
   if (new URLSearchParams(location.search).get('demo') === '1') {

@@ -21,22 +21,36 @@ const mats = new Map();
 // body (a=1,rgb=1), mid (a=1,rgb=.8), trim (a=1,rgb=.62), light (a=.55), visor (near black),
 // glow strips (cyan), gun-light (grey .42). Each faction maps the classes to colour/emissive.
 const hex = (h) => new THREE.Color(h);
+export const FACTIONS = ['vanguard', 'volcanic', 'earth', 'storm']; // default faction per team index
 const STYLE = {
-  0: { // Vanguard industrial: steel-blue painted plates, yellow hazard trim, welder visor (thin cyan strip)
+  vanguard: { // Vanguard industrial: steel-blue painted plates, yellow hazard trim, welder visor (thin cyan strip)
     body: hex(0x2f5f8f), mid: hex(0x264c72), light: hex(0x4a78a6), rough: 0.5, metal: 0.45,
     trimCol: hex(0xe0b020), trimEm: hex(0x000000), visorEm: hex(0x0a1418),
     glowEm: hex(0x39d8ff).multiplyScalar(0.9), gunEm: hex(0x000000),
   },
-  1: { // Volcanic Clans: blackened iron/obsidian, magma seams, ember lenses, glowing barrel
+  volcanic: { // Volcanic Clans: blackened iron/obsidian, magma seams, ember lenses, glowing barrel
     body: hex(0x1c1715), mid: hex(0x2a211d), light: hex(0x3a2b24), rough: 0.55, metal: 0.5,
     trimCol: hex(0x110d0b), trimEm: hex(0xff6a1a).multiplyScalar(1.3), visorEm: hex(0xff6a1a).multiplyScalar(2.0),
     glowEm: hex(0xff6a1a).multiplyScalar(1.8), gunEm: hex(0xff4a10).multiplyScalar(0.55),
   },
+  earth: { // Earth Cult: bark-brown plates, faint gold markings, golden sun visor
+    body: hex(0x5a3e26), mid: hex(0x4a3320), light: hex(0x6e5034), rough: 0.8, metal: 0.05,
+    trimCol: hex(0xc9a227), trimEm: hex(0xc9a227).multiplyScalar(0.15), visorEm: hex(0xffc84a).multiplyScalar(1.6),
+    glowEm: hex(0xffc84a).multiplyScalar(1.2), gunEm: hex(0x000000), scaleY: 1.25,
+  },
+  storm: { // Storm Nomads: bone-white armor, crimson sailcloth, blue-white electric visor
+    body: hex(0xe8e2d0), mid: hex(0xcfc7b2), light: hex(0xf4f0e6), rough: 0.6, metal: 0.1,
+    trimCol: hex(0x9a1f1f), trimEm: hex(0x000000), visorEm: hex(0xbfe4ff).multiplyScalar(2.0),
+    glowEm: hex(0x9fd8ff).multiplyScalar(1.6), gunEm: hex(0x6fbfff).multiplyScalar(0.4),
+  },
 };
+const factionOf = (team, f) => (STYLE[f] ? f : FACTIONS[team] || 'vanguard');
 
-function teamMaterial(team) {
-  if (mats.has(team)) return mats.get(team);
-  const st = STYLE[team] || STYLE[0];
+function teamMaterial(faction, hero = false) {
+  const key = faction + (hero ? ':hero' : '');
+  if (mats.has(key)) return mats.get(key);
+  const base = STYLE[faction] || STYLE.vanguard, k = hero ? 1.5 : 1, st = { ...base };
+  for (const n of ['trimEm', 'visorEm', 'glowEm', 'gunEm']) st[n] = base[n].clone().multiplyScalar(k);
   const m = new THREE.MeshStandardMaterial({
     color: st.body, vertexColors: true, metalness: st.metal, roughness: st.rough,
     envMapIntensity: 1.0, // lit by scene.environment (engine scales it, see trackEnv)
@@ -61,7 +75,7 @@ function teamMaterial(team) {
   #endif`)
       .replace('#include <emissivemap_fragment>', `totalEmissiveRadiance += partEm;`);
   };
-  mats.set(team, m);
+  mats.set(key, m);
   return m;
 }
 
@@ -105,7 +119,7 @@ function buildAttachments() {
   const lenses = () => [-1, 1].map((sx) => put(new THREE.CylinderGeometry(2.9, 2.9, 2, 10), H, [sx * 5.6, 11, 14.6], [Math.PI / 2 - 0.1, 0, 0], 0xffffff));
   const cape = [];
   [[-10, 46, 0.22, ASH], [0, 40, 0.18, ASH2], [10, 50, 0.25, ASH]].forEach(([x, h, tilt, c]) => cape.push(put(new THREE.BoxGeometry(11, h, 1.4), S2, [x, 14 - h / 2, -32 - h * 0.12], [tilt, 0, 0], c)));
-  attach[1] = { head: merge(head(), 'Head'), headLeader: merge([...head(), ...horns()], 'Head'), glow: merge(lenses(), 'Head'), cape: merge(cape, 'Spine2') };
+  attach.volcanic = { head: merge(head(), 'Head'), headLeader: merge([...head(), ...horns()], 'Head'), glow: merge(lenses(), 'Head'), cape: merge(cape, 'Spine2') };
   // Vanguard industrial: welder visor plate (dark glass) with a thin cyan strip, chunky rebreather;
   // the squad leader adds a yellow helmet stripe
   const vHead = () => [
@@ -113,24 +127,39 @@ function buildAttachments() {
     put(new THREE.BoxGeometry(14, 9, 9), H, [0, 2.5, 14], [0.2, 0, 0], 0x3a3f45),              // rebreather
     ...[-1, 1].map((sx) => put(new THREE.CylinderGeometry(3, 3, 6, 8), H, [sx * 8.5, 1, 13], [Math.PI / 2, 0, 0], 0x23272c)),
   ];
-  attach[0] = {
+  attach.vanguard = {
     head: merge(vHead(), 'Head'),
     headLeader: merge([...vHead(), put(new THREE.BoxGeometry(5, 3, 30), H, [0, 25.3, 1], [0, 0, 0], 0xe0b020)], 'Head'),
     glow: merge([put(new THREE.BoxGeometry(20, 1.4, 1), H, [0, 11.5, 16.1], [0, 0, 0], 0x39d8ff)], 'Head'),
   };
+  // Earth Cult: leafy shoulder mantle; Storm Nomads: crimson sailcloth wraps over shoulders + hanging tails
+  const LEAF = [0x3f6b2a, 0x4f7f32, 0x35592a];
+  const mantle = []; for (let i = 0; i < 9; i++) { const a = (i / 8 - 0.5) * 2.6; mantle.push(put(new THREE.ConeGeometry(7, 14, 4), S2, [Math.sin(a) * 22, 18 - Math.abs(a) * 3, Math.cos(a) * 6 - 6], [Math.PI / 2 + 0.6, 0, -a * 0.6], LEAF[i % 3])); }
+  attach.earth = { cape: merge(mantle, 'Spine2'), glow: merge([put(new THREE.BoxGeometry(22, 3.5, 2), H, [0, 11, 15.4], [0, 0, 0], 0xffc84a)], 'Head') };
+  const CR = 0x8c1c1c, CR2 = 0x6e1616;
+  attach.storm = {
+    cape: merge([put(new THREE.BoxGeometry(50, 6, 34), S2, [0, 17, -2], [0, 0, 0], CR), put(new THREE.BoxGeometry(9, 40, 1.2), S2, [-6, -6, -31], [0.2, 0, 0.05], CR2), put(new THREE.BoxGeometry(8, 30, 1.2), S2, [7, -2, -31], [0.25, 0, -0.08], CR)], 'Spine2'),
+    head: merge([put(new THREE.TorusGeometry(15, 3, 6, 14), H, [0, 3, 0], [Math.PI / 2, 0, 0], CR)], 'Head'),
+    glow: merge([put(new THREE.BoxGeometry(22, 3, 2), H, [0, 11, 15.4], [0, 0, 0], 0xbfe4ff)], 'Head'),
+  };
   attachMats.dark = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.6, metalness: 0.4 });
   attachMats.glow1 = new THREE.MeshBasicMaterial({ color: hex(0xff6a1a).multiplyScalar(1.6), toneMapped: true });
   attachMats.glow0 = new THREE.MeshBasicMaterial({ vertexColors: true, color: hex(0xffffff).multiplyScalar(1.5) });
+  attachMats.glowHero = new THREE.MeshBasicMaterial({ vertexColors: true, color: hex(0xffffff).multiplyScalar(2.4) });
 }
-function addGear(body, team, leader) {
-  const set = attach[team]; if (!set) return;
+// Adds faction gear to a soldier body (anything containing the mixamorig bones). Used by makeSoldier and
+// by js/heroes.js for hero variants ({hero:true} → leader head + brighter glow).
+export function attachFactionProps(body, faction, { hero = false, leader = false } = {}) {
+  const set = attach[faction]; if (!set) return;
+  leader = leader || hero;
   const add = (geo, mat) => {
     if (!geo) return;
     const bone = body.getObjectByName(geo.userData.bone); if (!bone) return;
     const m = new THREE.Mesh(geo, mat); m.castShadow = mat.isMeshStandardMaterial; m.frustumCulled = false; bone.add(m);
   };
-  if (team === 1) { add(leader ? set.headLeader : set.head, attachMats.dark); add(set.cape, attachMats.dark); add(set.glow, attachMats.glow1); }
-  else { add(leader ? set.headLeader : set.head, attachMats.dark); add(set.glow, attachMats.glow0); }
+  add(leader && set.headLeader ? set.headLeader : set.head, attachMats.dark);
+  add(set.cape, attachMats.dark);
+  add(set.glow, faction === 'volcanic' ? attachMats.glow1 : hero ? attachMats.glowHero : attachMats.glow0);
 }
 
 // Loads the GLB once. Resolves to true on success; throws on failure (engine falls back to primitives).
@@ -148,19 +177,22 @@ export const charactersReady = () => !!template;
 export const clipNames = () => Object.keys(clips);
 
 // One soldier: { root, mixer, actions, play(name, fade), current }. Faces local +X like every engine model.
-export function makeSoldier(team, { leader = false } = {}) {
+// opts: { faction ('vanguard'|'volcanic'|'earth'|'storm', default by team), leader, hero (1.6x, brighter) }
+export function makeSoldier(team, { faction, leader = false, hero = false } = {}) {
   if (!template) throw new Error('characters not loaded');
+  faction = factionOf(team, faction);
   const body = SkeletonUtils.clone(template);
-  const m = teamMaterial(team);
+  const m = teamMaterial(faction, hero);
   body.traverse((o) => {
     if (o.isSkinnedMesh) {
       o.material = m; o.castShadow = true; o.receiveShadow = false;
       o.frustumCulled = false; // engine culls whole squads itself (rest-pose bounds are wrong once animated)
     }
   });
-  addGear(body, team, leader);
-  const s = SOLDIER_HEIGHT / SRC_HEIGHT;
+  attachFactionProps(body, faction, { hero, leader });
+  const s = SOLDIER_HEIGHT / SRC_HEIGHT * (hero ? 1.6 : 1);
   body.scale.setScalar(s);
+  body.scale.y *= STYLE[faction].scaleY || 1;
   body.rotation.y = Math.PI / 2; // rig faces +Z; engine models face +X
   const root = new THREE.Group(); root.add(body); root.name = 'soldier';
   const mixer = new THREE.AnimationMixer(body);

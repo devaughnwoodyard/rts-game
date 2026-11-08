@@ -656,7 +656,7 @@ export async function createEngine() {
     inner.name = 'squad'; g.add(inner);
     const sq = { group: g, inner, soldiers: [], offsets: [], clip: null, forced: null, dying: 0, last: null, speed: 0, seen: false };
     for (const [x, z] of SQUAD_POS) {
-      const s = chars.makeSoldier(team, { leader: sq.soldiers.length === 0 }); // front soldier leads (horns on Clans)
+      const s = chars.makeSoldier(team, { faction: world.factions?.[team], leader: sq.soldiers.length === 0 }); // front soldier leads (horns on Clans)
       s.root.position.set(x, 0, z); s.root.rotation.y = (Math.random() - 0.5) * 0.3;
       s.delay = Math.random() * 0.35;
       inner.add(s.root, blob(0.5, x, z));
@@ -1062,10 +1062,11 @@ export async function createEngine() {
   if (params.get('gallery') === '1') {
     const B = BASES[0], cx = B.x + 31, cz = B.z + 3;
     const lineup = [];
-    for (let i = 0; i < 3; i++) for (const team of [0, 1]) {
+    for (let i = 0; i < 3; i++) for (const side of [0, 1]) { // rows: vanguard|volcanic, earth|storm, vanguard|volcanic
+      const team = side + (i === 1 ? 2 : 0);
       const g = world.makeMesh('warden', team);
-      g.position.set(cx + (team ? 5 : -5), 0, cz - 6 + i * 6);
-      g.rotation.y = team ? Math.PI : 0;
+      g.position.set(cx + (side ? 5 : -5), 0, cz - 6 + i * 6);
+      g.rotation.y = side ? Math.PI : 0;
       scene.add(g); lineup.push(g);
     }
     const order = ['idle', 'walk', 'fire', 'reload', 'melee', 'die'];

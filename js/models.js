@@ -258,6 +258,7 @@ function mats(theme) {
       haz: new T.MeshStandardMaterial({ vertexColors: true, map: hazTex(), metalness: 0.3, roughness: 0.6, envMap: env, envMapIntensity: 0.4 }),
       glow, smoke: smokeMat([0.5, 0.5, 0.52], 0.55, false) };
     for (const k of ['conc', 'corr', 'steel', 'shutter']) m[k].envMapIntensity = 0.7;
+    m.conc.color.setRGB(1.0, 1.08, 1.2);
   }
   else if (theme === 'E') {
     const st = pbr('rocky_terrain_02').clone(); st.color.setRGB(1.7, 1.45, 1.3);
@@ -1297,6 +1298,7 @@ function F_cc() { // fortress-forge carved into a rock outcrop: crucible core + 
   const lw = F.lavaW || 0.14;
   for (const a of [0.9, 2.6, 4.0, 5.4]) { fSeam(k, polar(4.95, a, 5.5), polar(6.5, a, 2.6), lw); fSeam(k, polar(6.75, a, 2.5), polar(7.9, a, 0.08), lw);
     if (F.spires) { k.add('glow', box(lw * 4, 0.06, lw * 4), F.gold, polar(7.95, a, 0.04), 0, 1, { fx: 3.2 }); k.embers(polar(7.6, a, 0.3), 3, 1, 0.6); } }
+  if (F.spires) { k.add('glow', torus(8.3, 0.35, 3, 40), F.molten, [0, 0.12, 0], [PI / 2, 0, 0], [1, 1, 0.3], { fx: 3.1 }); k.add('glow', torus(8.3, 0.12, 3, 40), F.gold, [0, 0.2, 0], [PI / 2, 0, 0], [1, 1, 0.3], { fx: 3.6 }); k.embers([0, 0.4, 0], 16, 15, 0.9); }
   if (F.spires) for (let i = 0; i < 7; i++) { const a = 0.3 + i / 7 * TAU, h = 3.5 + (i % 3) * 2.2; k.spike('solid', polar(6.0 + (i % 2) * 1.1, a, 2.0), [Math.sin(a) * 0.25, 1, Math.cos(a) * 0.25], h, 0.55, F.iron2); }
   // crucible core
   k.add('solid', cyl(3.2, 2.2, 1.6, 10), F.iron, [0, 6.4, 0]);
@@ -1495,7 +1497,7 @@ function F_gate() { // massive iron portcullis between flared stone pylons, glow
 
 // ======================================================================= EARTH CULT (team-1 candidate A)
 // Red-rock mountainside, terraced temples, ancient trees, gold sun-discs firing light beams, floating rock, sun-crystals.
-const E = { rock: 0xb0583a, rock2: 0x8a3e28, sand: 0xe0aa78, sand2: 0xf0c49a, moss: 0x3f7a3c, leaf: 0x2f6b34, leaf2: 0x4f9a48, bark: 0x5e3e28,
+const E = { rock: 0xb0583a, rock2: 0x8a3e28, sand: 0xe0aa78, sand2: 0xf0c49a, moss: 0x4a9a44, leaf: 0x3a8a3c, leaf2: 0x6cc05a, bark: 0x5e3e28,
   gold: 0xe8b648, sun: 0xffd56a, white: 0xfff4d6, red: 0xb8302a, cyan: 0x39d8ff };
 const eStone = (base = E.sand) => (x, y, z) => { const b = Math.sin(y * 2.2 + Math.sin(x * 0.6 + z * 0.4) * 0.9); return b > 0.55 ? E.rock : b < -0.65 ? E.sand2 : base; };
 function eBoulder(k, p, s, r, col = E.rock, sy = 0.8) { k.add('stone', jitter(new T.DodecahedronGeometry(1, 0), r, 0.22), eStone(col), p, [r(), r() * 6, r()], [s * (1 + r() * 0.3), s * sy, s]); }
@@ -1518,7 +1520,9 @@ function eSunDisc(k, p, R, tilt = 0.6, ry = 0, beam = 0) { // gold mirror on a s
 }
 function eCrystal(k, p, h, w, tilt = 0, ry = 0) { k.add('glow', new T.OctahedronGeometry(1, 0), E.sun, [p[0], p[1] + h * 0.8, p[2]], [tilt, ry, 0], [w, h, w], { fx: 3 + Math.random() * 0.9 }); }
 function eFloat(k, p, s, r) { // floating rock fragment (bobs via updateModels) with glowing underside + motes
-  k.sub('bob', p, [0, 0, 0], (q) => { eBoulder(q, [0, 0, 0], s, r, E.rock, 0.6); q.add('glow', cone(s * 0.5, s * 0.9, 5), E.sun, [0, -s * 0.7, 0], [PI, 0, 0], 1, { fx: 3.4 }); });
+  if (!k._bob) { k._bob = new Kit(k.theme); (k.subs ||= []).push(['bob', [0, 0, 0], [0, 0, 0], k._bob]); }
+  const q = k._bob, w = new T.Vector3(...p).applyMatrix4(k.top()), P = [w.x, w.y, w.z];
+  eBoulder(q, P, s, r, E.rock, 0.6); q.add('glow', cone(s * 0.5, s * 0.9, 5), E.sun, [P[0], P[1] - s * 0.7, P[2]], [PI, 0, 0], 1, { fx: 3.4 });
   k.embers([p[0], p[1] - s, p[2]], 3, s, 0.6);
 }
 function eSteps(k, cx, cz, w, d, h, n, col = E.sand) { // terraced stepped platform
@@ -1543,7 +1547,7 @@ function E_cc() { // temple grown from a red-rock mountainside, ancient tree, su
   k.add('stone', cyl(0.5, 0.7, 2.0, 8), eStone(E.sand2), [0.6, 10.0, 0.6]);
   eSunDisc(k, [0.6, 11.6, 0.6], 1.6, 0.35, -0.6, 8);
   // ancient tree gripping the rock at the back
-  eTree(k, [-3.6, 3.0, -3.4], 4.2, 1.15, r);
+  eTree(k, [-3.6, 3.0, -3.4], 4.6, 1.6, r); eTree(k, [4.2, 2.0, -4.6], 3.0, 1.1, r); eTree(k, [-5.4, 1.2, 3.2], 2.6, 1.0, r);
   for (let i = 0; i < 5; i++) k.line('leaf', [-3.6, 3.4, -3.4], polar(6.6, PI + 0.6 + (i - 2) * 0.35, 0.3), 0.18, E.bark, 5);
   // stairway + gate on +X
   for (let i = 0; i < 5; i++) k.add('stone', bbox(1.0, 0.4, 3.0, 0.05), eStone(E.sand2), [7.4 - i * 0.6, 0.2 + i * 0.6, 0.6]);
@@ -2256,6 +2260,132 @@ function decorInd(k, lx, lz, i, r, ry) {
   else { for (let j = 0; j < 3; j++) k.add('steel', bbox(1.2, 0.18, 1.0, 0.03), 0x8a6a48, [lx + j * 0.2, 0.09 + j * 0.2, lz], [0, j * 0.2, 0]); k.add('steel', bbox(1.0, 0.8, 0.9, 0.05), I.blue2, [lx + 1.4, 0.4, lz + 0.3]); iBeacon(k, [lx + 1.4, 0.8, lz + 0.3]); }
 }
 
+// ======================================================================= roster specials + air
+function blobTex() {
+  if (TEX.blob) return TEX.blob;
+  const [c, g] = canvas(64, 64), gr = g.createRadialGradient(32, 32, 2, 32, 32, 31);
+  gr.addColorStop(0, 'rgba(0,0,0,0.75)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.35)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64); return (TEX.blob = texFrom(c));
+}
+const BLOB_MAT = () => MATS.blob || (MATS.blob = new T.MeshBasicMaterial({ map: blobTex(), transparent: true, depthWrite: false, toneMapped: false }));
+function airify(g, span) { // soft ground shadow that stays on y=0 wherever the flyer is (kept by updateModels)
+  const b = new T.Mesh(gc('blobP', () => new T.PlaneGeometry(1, 1).rotateX(-PI / 2)), BLOB_MAT());
+  b.scale.set(span, 1, span * 0.7); b.name = 'airShadow'; b.renderOrder = 1; b.raycast = () => {};
+  g.add(b); g.userData.air = true; return g;
+}
+// ---- Earth: Sunwing (great golden-winged flyer), Glider, Burrower (+ mound)
+function E_sunwing() {
+  const k = new Kit('E');
+  k.add('stone', prism([[-1.4, -0.2], [0.9, -0.25], [1.7, 0.05], [0.9, 0.35], [-1.2, 0.3]], 0.9, 0.08), eStone(E.rock2), [0, 0, 0]);
+  k.add('gold', cone(0.3, 0.9, 5), E.gold, [2.0, 0.05, 0], [0, 0, -PI / 2]);
+  k.add('glow', new T.OctahedronGeometry(1, 0), E.sun, [0.2, 0.1, 0], 0, [0.3, 0.4, 0.3], { fx: 3.5 });
+  for (const s of [1, -1]) {
+    for (let i = 0; i < 5; i++) { // layered feather blades, swept back
+      const z0 = s * (0.4 + i * 0.75), len = 1.9 - i * 0.22;
+      k.add('gold', prism([[-len, 0], [0.5, 0], [0.3, 0.06], [-len + 0.2, 0.05]], 0.7, 0.01), i % 2 ? E.gold : 0xf4d070, [0.2 - i * 0.28, 0.1 + i * 0.05, z0], [s * -0.08, 0, 0]);
+    }
+    k.bar('glow', [0.5, 0.18, s * 0.4], [-0.6, 0.35, s * 3.6], 0.06, E.white, { fx: 3.3 });
+    k.add('gold', prism([[-1.2, 0], [0, 0], [-1.6, 0.6]], 0.05, 0.01), E.gold, [-1.1, 0.1, s * 0.25], [s * 0.4, 0, 0]);
+  }
+  k.embers([-1.3, 0, 0], 6, 0.6, 0.7);
+  return airify(fin(k.build(), 'air', 1.2), 7);
+}
+function E_glider() {
+  const k = new Kit('E');
+  k.add('jacq', gc('delta', () => { const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute([1.2, 0, 0, -0.9, 0.12, 1.8, -0.9, 0.12, -1.8, 1.2, 0, 0, -0.9, 0.12, -1.8, -0.9, 0.12, 1.8], 3)); g.setAttribute('uv', new T.Float32BufferAttribute([0.5, 1, 0, 0, 1, 0, 0.5, 1, 1, 0, 0, 0], 2)); g.computeVertexNormals(); return g; }), 0xe8b648, [0, 0.4, 0], 0, 1, { smooth: true });
+  k.bar('gold', [1.2, 0.4, 0], [-0.9, 0.52, 1.8], 0.05, E.gold); k.bar('gold', [1.2, 0.4, 0], [-0.9, 0.52, -1.8], 0.05, E.gold); k.bar('gold', [-0.9, 0.52, -1.8], [-0.9, 0.52, 1.8], 0.04, E.gold);
+  k.add('stone', prism([[-0.6, -0.15], [0.5, -0.12], [0.8, 0], [0.4, 0.15], [-0.5, 0.12]], 0.35, 0.03), eStone(E.rock2), [0, 0, 0]);
+  k.add('glow', box(0.5, 0.04, 0.04), E.sun, [-0.9, 0.52, 0], 0, 1, { fx: 3.4 });
+  return airify(fin(k.build(), 'air', 0.8), 3.8);
+}
+function E_burrower() { // rock-armored drill beast
+  const k = new Kit('E'), r = rng(611);
+  for (let i = 0; i < 3; i++) { const x = 0.6 - i * 1.15, s = 1 - i * 0.15; k.add('stone', ico(0.85 * s, 0), eStone(i ? E.rock : E.rock2), [x, 0.75 * s, 0], [r(), r(), r()], [1.2, 0.9, 1]); k.add('gold', torus(0.75 * s, 0.06, 4, 10), E.gold, [x + 0.45 * s, 0.75 * s, 0], [0, PI / 2, 0]); }
+  k.add('gold', cone(0.6, 1.5, 7), E.gold, [1.95, 0.75, 0], [0, 0, -PI / 2]);
+  for (let i = 0; i < 3; i++) k.bar('glow', [1.4 + i * 0.35, 0.75 + 0.5 - i * 0.15, 0], [1.6 + i * 0.35, 0.75 - 0.4 + i * 0.12, 0.3], 0.05, E.sun, { fx: 3.2 });
+  for (const s of [1, -1]) for (const x of [0.5, -0.6]) k.line('stone', [x, 0.6, s * 0.6], [x + 0.3, 0, s * 1.0], 0.17, E.rock2, 5);
+  for (const s of [1, -1]) k.add('glow', box(0.08, 0.1, 0.12), E.sun, [1.1, 1.05, s * 0.35]);
+  return fin(k.build(), 'burrower', 1.6);
+}
+function E_mound() { // dirt mound shown while burrowed
+  const k = new Kit('E'), r = rng(613);
+  k.add('stone', gc('mound', () => new T.SphereGeometry(1, 10, 5, 0, TAU, 0, PI / 2)), (x, y) => (y > 0.5 ? 0x8a5a3a : 0x6a4428), [0, 0, 0], 0, [1.6, 0.6, 1.3]);
+  for (let i = 0; i < 6; i++) eBoulder(k, polar(1.4 + r() * 0.4, r() * TAU, 0.1), 0.25 + r() * 0.2, r, E.rock2);
+  for (let i = 0; i < 3; i++) k.bar('glow', polar(0.2, i * 2, 0.6), polar(1.2, i * 2 + 0.4, 0.2), 0.05, E.sun, { fx: 3.6 });
+  k.haze([0, 0.4, 0], 2, 1.2);
+  return fin(k.build(), 'mound', 0.8);
+}
+// ---- Volcanic: Magma Juggernaut, Ash Cannon AA
+function F_juggernaut() {
+  const k = new Kit('C');
+  fTracks(k, 5.4, 1.45, 0.9, 0.85);
+  k.add('solid', prism([[-2.7, 0.55], [2.0, 0.55], [2.8, 0.9], [1.9, 1.65], [-2.4, 1.75], [-2.8, 1.2]], 2.4, 0.1), F.rock2, [0, 0, 0]);
+  for (let i = 0; i < 4; i++) { const x = -1.9 + i * 1.15; k.add('stone', bbox(1.0, 0.25, 2.7, 0.08), stoneC(F.rock), [x, 1.8, 0], [0, 0, (i % 2 ? 0.05 : -0.05)]); fSeam(k, [x + 0.55, 1.8, -1.3], [x + 0.55, 1.8, 1.3], 0.1); }
+  for (const s of [1, -1]) { k.add('stone', prism([[-2.6, 0.9], [2.4, 0.9], [2.6, 1.3], [-2.7, 1.4]], 0.4, 0.05), stoneC(F.rock), [0, 0, s * 1.45]); fSeam(k, [-2.4, 1.15, s * 1.67], [2.3, 1.1, s * 1.67], 0.12); k.line('solid', [-2.3, 1.4, s * 0.8], [-2.8, 2.7, s * 0.8], 0.16, F.iron, 6); k.flame([-2.8, 2.7, s * 0.8], 0.8, 0.18); k.embers([-2.8, 2.9, s * 0.8], 4, 0.4, 0.7); }
+  fRam(k, 2.6, 0.2, 3.0, 1.2, 5);
+  const g = k.build();
+  const t = new Kit('C');
+  t.add('solid', prism([[-1.5, 0], [0.9, 0], [1.4, 0.35], [0.9, 0.85], [-1.3, 0.9], [-1.6, 0.4]], 2.0, 0.07), F.rock2, [0, 0, 0]);
+  fSeam(t, [-1.3, 0.92, 0], [0.8, 0.88, 0], 0.12);
+  t.add('solid', cyl(0.2, 0.24, 3.0, 10), F.iron2, [2.6, 0.45, 0], [0, 0, -PI / 2]);
+  t.add('glow', cyl(0.18, 0.18, 0.08, 10), F.molten, [4.12, 0.45, 0], [0, 0, PI / 2], 1, { fx: 3.5 });
+  for (const s of [1, -1]) t.spike('solid', [-1.2, 0.7, s * 0.95], [-0.6, 0.6, s], 0.9, 0.1, F.iron2);
+  const tur = t.build('turret'); tur.position.set(-0.3, 1.9, 0); g.add(tur);
+  return fin(g, 'tank', 3.0);
+}
+function F_ashcannon() { // tracked AA: twin upward magma flak barrels
+  const k = new Kit('C');
+  fTracks(k, 3.8, 1.0, 0.65, 0.6);
+  k.add('solid', prism([[-1.9, 0.4], [1.5, 0.4], [2.0, 0.6], [1.4, 1.0], [-1.8, 1.05]], 1.6, 0.06), F.rock2, [0, 0, 0]);
+  fSeam(k, [-1.6, 1.08, -0.6], [-1.6, 1.08, 0.6], 0.1); k.embers([-1.6, 1.1, 0], 4, 0.6, 0.7);
+  const g = k.build();
+  const t = new Kit('C');
+  t.add('solid', cyl(0.8, 0.9, 0.35, 8), F.iron, [0, 0.17, 0]);
+  t.push([0.1, 0.6, 0], [0, 0, 0.95]);
+  for (const s of [1, -1]) { t.add('solid', cyl(0.12, 0.14, 2.2, 8), F.iron2, [1.0, 0, s * 0.28], [0, 0, -PI / 2]); t.add('glow', cyl(0.11, 0.11, 0.06, 8), F.molten, [2.12, 0, s * 0.28], [0, 0, PI / 2], 1, { fx: 3.6 }); }
+  t.add('solid', bbox(0.7, 0.6, 0.9, 0.06), F.rock2, [0, 0, 0]);
+  t.pop();
+  const tur = t.build('turret'); tur.position.y = 1.05; g.add(tur);
+  return fin(g, 'aa', 2.8);
+}
+// ---- Vanguard: flak truck (AA)
+function I_flak() {
+  const k = new Kit('I');
+  for (const x of [1.2, -0.3, -1.3]) for (const s of [1, -1]) iWheel(k, x, s * 0.95, 0.44, 0.34);
+  k.add('steel', bbox(4.0, 0.35, 1.6, 0.06), I.dark, [0, 0.8, 0]);
+  k.add('steel', prism([[0.9, 1.0], [2.0, 1.0], [2.05, 1.45], [1.75, 2.0], [0.95, 2.05]], 1.6, 0.06), I.blue, [0, 0, 0]);
+  k.add('glow', box(0.05, 0.3, 1.2), I.cyan, [1.9, 1.7, 0], [0, 0, 0.5], 1, { fx: 2.2 });
+  k.add('steel', bbox(2.4, 0.5, 1.8, 0.06), I.blue2, [-0.6, 1.2, 0]);
+  iHaz(k, [-0.6, 1.47, 0.91], 2.4, 0.12, 0.04); iHaz(k, [-0.6, 1.47, -0.91], 2.4, 0.12, 0.04);
+  for (const z of [0.55, -0.55]) iLight(k, [2.05, 1.2, z], I.white, 0.14);
+  const g = k.build();
+  const t = new Kit('I');
+  t.add('steel', cyl(0.7, 0.8, 0.3, 10), I.dark, [0, 0.15, 0]);
+  t.push([0, 0.55, 0], [0, 0, 0.8]);
+  t.add('steel', bbox(0.8, 0.55, 1.1, 0.06), I.blue, [0, 0, 0]);
+  for (const s of [1, -1]) for (const dy of [0.12, -0.12]) t.add('steel', cyl(0.05, 0.05, 1.6, 6), I.steel, [1.05, dy, s * 0.35], [0, 0, -PI / 2]);
+  t.pop();
+  t.add('steel', bbox(0.5, 0.4, 0.06, 0.02), I.yellow, [-0.3, 0.5, 0.62]);
+  iRadar(t, [-0.55, 0.3, -0.45], 0.4);
+  const tur = t.build('turret'); tur.position.set(-0.6, 1.45, 0); g.add(tur);
+  return fin(g, 'aa', 2.6);
+}
+// ---- Storm: tesla AA rig with a tethered storm kite
+function S_kite() {
+  const k = new Kit('S');
+  for (const x of [1.0, -1.0]) for (const s of [1, -1]) sWheel(k, x, s * 0.95, 0.4, 0.3);
+  k.add('solid', prism([[-1.7, 0.4], [1.4, 0.4], [1.9, 0.6], [1.3, 0.9], [-1.6, 0.95]], 1.5, 0.06), S.grey, [0, 0, 0]);
+  k.add('jacq', cloth(2.4, 0.35, 0.02, 0), S.crimson, [-0.2, 0.7, 0.77], 0, 1, { smooth: true });
+  sTesla(k, [-0.6, 0.9, 0], 2.0, 3, 0.75);
+  k.line('solid', [0.6, 0.9, 0], [-1.5, 6.4, 0.5], 0.015, S.bone, 3);
+  k.sub('bob', [-1.6, 6.5, 0.5], [0, 0, 0], (q) => {
+    q.add('jacq', gc('kite', () => { const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute([0, 0.9, 0, -0.7, 0, 0, 0, -1.2, 0, 0, 0.9, 0, 0, -1.2, 0, 0.7, 0, 0], 3)); g.setAttribute('uv', new T.Float32BufferAttribute([0.5, 1, 0, 0.5, 0.5, 0, 0.5, 1, 0.5, 0, 1, 0.5], 2)); g.computeVertexNormals(); return g; }), S.crimson, [0, 0, 0], [-0.9, 0, 0], [1.6, 1.6, 1.6], { smooth: true });
+    q.add('glow', sph(0.12, 6, 4), S.volt, [0, 0, 0], 0, 1, { fx: 1.2 });
+    sArc(q, [0, 0, 0], [0.8, -1.4, 0.4], 3);
+  });
+  return fin(k.build(), 'aa', 3.0);
+}
+
 // ======================================================================= neutral
 function N_crystal(variant) {
   const k = new Kit('N'), r = rng(301 + variant * 13);
@@ -2354,7 +2484,7 @@ function decorForge(k, lx, lz, i, r, ry) {
   }
 }
 
-const VOLC = { sand: 0x4a4240, sand2: 0x5e5450, rock: 0x2e2826, rock2: 0x2a1c1a, iron: 0x2b2724, iron2: 0x161012, steel: 0x3e3634,
+const VOLC = { sand: 0x5a504c, sand2: 0x6e625c, rock: 0x3a2e2a, rock2: 0x2a1c1a, iron: 0x2b2724, iron2: 0x161012, steel: 0x3e3634,
   red: 0xa3241c, red2: 0x6e1a14, molten: 0xff5a12, gold: 0xffb340, brick: 0x8a6e66, lavaW: 0.3, spires: true, dark: true };
 const F0 = { ...F, lavaW: 0, spires: false, dark: false };
 function withPal(pal, fn) { return (v) => { Object.assign(F, pal); MAT_OVERRIDE = 'X'; try { return fn(v); } finally { Object.assign(F, F0); MAT_OVERRIDE = null; } }; }
@@ -2378,11 +2508,12 @@ const THEMES = {
     gltf: { turret_cannon: F_turret_cannon_gltf, artillery: F_artillery_gltf } },
   volcanic: { mat: 'X', tank: withPal(VOLC, F_tank), raider: withPal(VOLC, F_raider), harvester: withPal(VOLC, F_harvester), cc: withPal(VOLC, F_cc), barracks: withPal(VOLC, F_barracks),
     factory: withPal(VOLC, F_factory), turret_mg: withPal(VOLC, F_turret_mg), turret_cannon: withPal(VOLC, F_turret_cannon), artillery: withPal(VOLC, F_artillery), wall: withPal(VOLC, F_wall), gate: withPal(VOLC, F_gate),
+    juggernaut: withPal(VOLC, F_juggernaut), ash: withPal(VOLC, F_ashcannon), special: withPal(VOLC, F_juggernaut), air: withPal(VOLC, F_ashcannon),
     decor: withPal(VOLC, (a) => a), variants: { wall: 3 }, gltf: { turret_cannon: withPal(VOLC, F_turret_cannon_gltf), artillery: withPal(VOLC, F_artillery_gltf) } },
-  industrial: { mat: 'I', tank: I_tank, raider: I_raider, harvester: I_harvester, cc: I_cc, barracks: I_barracks, factory: I_factory, turret_mg: I_turret_mg, turret_cannon: I_turret_cannon, artillery: I_artillery, wall: I_wall, gate: I_gate, decor: decorInd, variants: { wall: 2 } },
-  earth: { mat: 'E', tank: E_tank, raider: E_raider, harvester: E_harvester, cc: E_cc, barracks: E_barracks, factory: E_factory, turret_mg: E_turret_mg, turret_cannon: E_turret_cannon, artillery: E_artillery, wall: E_wall, gate: E_gate, decor: decorEarth, variants: { wall: 3 },
+  industrial: { mat: 'I', tank: I_tank, raider: I_raider, harvester: I_harvester, cc: I_cc, barracks: I_barracks, factory: I_factory, turret_mg: I_turret_mg, turret_cannon: I_turret_cannon, artillery: I_artillery, wall: I_wall, gate: I_gate, decor: decorInd, variants: { wall: 2 }, special: I_flak, air: I_flak, flak: I_flak },
+  earth: { mat: 'E', tank: E_tank, raider: E_raider, harvester: E_harvester, cc: E_cc, barracks: E_barracks, factory: E_factory, turret_mg: E_turret_mg, turret_cannon: E_turret_cannon, artillery: E_artillery, wall: E_wall, gate: E_gate, decor: decorEarth, variants: { wall: 3 }, sunwing: E_sunwing, glider: E_glider, burrow: E_burrower, mound: E_mound, special: E_burrower, air: E_sunwing,
     gltf: { artillery: E_artillery_gltf } },
-  storm: { mat: 'S', tank: S_tank, raider: S_raider, harvester: S_harvester, cc: S_cc, barracks: S_barracks, factory: S_factory, turret_mg: S_turret_mg, turret_cannon: S_turret_cannon, artillery: S_artillery, wall: S_wall, gate: S_gate, decor: decorStorm, variants: { wall: 2 } },
+  storm: { mat: 'S', tank: S_tank, raider: S_raider, harvester: S_harvester, cc: S_cc, barracks: S_barracks, factory: S_factory, turret_mg: S_turret_mg, turret_cannon: S_turret_cannon, artillery: S_artillery, wall: S_wall, gate: S_gate, decor: decorStorm, variants: { wall: 2 }, yacht: S_raider, kite: S_kite, tesla: S_kite, special: S_kite, air: S_kite },
   neutral: { mat: 'N', crystal: N_crystal, rock: N_rock, variants: { crystal: 4, rock: 4 } },
 };
 const TEAM_THEME = { 0: 'industrial', 1: 'volcanic', 2: 'earth', 3: 'storm', '-1': 'cyber' };
@@ -2393,8 +2524,26 @@ const TPL = new Map();
 
 const FACTION = { vanguard: 'industrial', industrial: 'industrial', volcanic: 'volcanic', earth: 'earth', storm: 'storm', cyber: 'cyber' };
 const themeOf = (team, faction) => (faction && FACTION[faction]) || TEAM_THEME[team] || 'cyber';
+// Roster routing: namespaced kinds (e.g. 'earth_sunwing', 'volcanic_juggernaut') resolve by ROSTER[kind].faction/.role
+// (pass the roster via setRoster or globalThis.ROSTER), else by name keywords. Infantry returns null (characters.js owns it).
+let ROSTER_REF = null;
+export function setRoster(r) { ROSTER_REF = r; }
+const KEYWORDS = ['sunwing', 'glider', 'burrow', 'mound', 'juggernaut', 'ash', 'flak', 'yacht', 'kite', 'tesla'];
+const ROLE_KIND = { light: 'raider', heavy: 'tank', harvester: 'harvester', special: 'special', air: 'air', aa: 'air' };
+const ROLE_WORDS = [[/tank|heavy|crawler|golem|walker|siege/, 'tank'], [/raider|buggy|runner|strider|bike|light|interceptor|scout/, 'raider'], [/harvest|hauler|miner/, 'harvester'], [/infantry|trooper|warden|soldier|warrior|hero/, null]];
+function resolveKind(kind, faction) {
+  if (!kind.includes('_') || BASE_KINDS.has(kind)) return [kind, faction];
+  const R = ROSTER_REF || globalThis.ROSTER, info = R?.[kind];
+  const fac = info?.faction || faction || kind.split('_')[0], rest = kind.slice(kind.indexOf('_') + 1);
+  const kw = KEYWORDS.find(w => rest.includes(w)); if (kw) return [kw, fac];
+  const role = info?.role; if (role) return [role === 'infantry' ? null : ROLE_KIND[role] || 'tank', fac];
+  for (const [re, k2] of ROLE_WORDS) if (re.test(rest)) return [k2, fac];
+  return [BASE_KINDS.has(rest) ? rest : 'tank', fac];
+}
+const BASE_KINDS = new Set(['tank', 'raider', 'harvester', 'cc', 'barracks', 'factory', 'turret_mg', 'turret_cannon', 'artillery', 'wall', 'gate', 'crystal', 'rock']);
 export function makeModel(THREE, kind, team, faction) {
   T = T || THREE;
+  const orig = kind; [kind, faction] = resolveKind(kind, faction); if (!kind) return null;
   const tn = kind === 'crystal' || kind === 'rock' ? 'neutral' : themeOf(team, faction), th = THEMES[tn];
   let fn = th[kind]; if (typeof fn !== 'function' || kind === 'decor') return null;
   const useG = !!(CANNON && th.gltf?.[kind]); if (useG) fn = th.gltf[kind];
@@ -2402,12 +2551,12 @@ export function makeModel(THREE, kind, team, faction) {
   if (!TPL.has(key)) TPL.set(key, fn(v));
   const o = TPL.get(key).clone();
   const tur = o.getObjectByName('turret'); if (tur) o.userData.turret = tur;
-  regAnim(o);
+  regAnim(o); if (orig !== kind) o.userData.kind = orig;
   return o;
 }
 
 const ANIM = [];
-function regAnim(o) { o.traverse(c => { if (c.name === 'spin' || c.name === 'spinY' || c.name === 'bob') ANIM.push({ o: c, y0: c.position.y, ph: Math.random() * TAU, born: U.time.value }); }); }
+function regAnim(o) { o.traverse(c => { if (c.name === 'spin' || c.name === 'spinY' || c.name === 'bob' || c.name === 'airShadow') ANIM.push({ o: c, y0: c.position.y, ph: Math.random() * TAU, born: U.time.value }); }); }
 export function updateModels(dt, t) {
   U.time.value = Number.isFinite(t) ? t : U.time.value + (dt || 0);
   if (TEX.scan) TEX.scan.offset.y = -U.time.value * 0.35;
@@ -2415,6 +2564,7 @@ export function updateModels(dt, t) {
   for (let i = ANIM.length - 1; i >= 0; i--) {
     const a = ANIM[i]; let r = a.o; while (r.parent) r = r.parent;
     if (!r.isScene) { if (tt - a.born > 10 || tt < a.born) ANIM.splice(i, 1); continue; }
+    if (a.o.name === 'airShadow') { const pr = a.o.parent; a.o.position.y = -(pr.position.y) / (pr.scale.y || 1) + 0.06; continue; }
     if (a.o.name === 'spin') a.o.rotation.x += (dt || 0.016) * 2.2; else if (a.o.name === 'spinY') a.o.rotation.y += (dt || 0.016) * 1.2; else a.o.position.y = a.y0 + Math.sin(tt * 1.1 + a.ph) * 0.35;
   }
 }

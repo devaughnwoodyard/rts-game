@@ -23,7 +23,29 @@
 //    only teams 1..3 get hidden flags. Attack commands on hidden targets become a move to the tapped point.
 //  - Base crystal fields are tagged `home: team`; other teams' harvesters don't mine them. Center fields are
 //    `rich` (CONFIG.economy.richMul carry).
+//  - Heroes (CONTRACT Heroes): spawn('hero', team, x, z, { stats:{hp,speed,range,dps,cooldown,r,sight}, ... }) needs no
+//    CONFIG entry. Any entity with e.stats has speed/range/dps/cooldown/r re-synced from it every step (so heroes.js
+//    may change stats live) and fog sight from stats.sight. Heroes cost no supply unless opts.supply is given.
+//  - e.status = { rooted, stunned, dmgMul, until }: a flag is active if `true` or a number > clock.t (timestamp);
+//    the whole status is cleared once clock.t > until. rooted/stunned = no movement, stunned = no attacks,
+//    dmgMul scales incoming damage in sim.damage. slowMul / speedMul (numbers) multiply move speed.
+//  - ROSTER (js/roster.js, optional, loaded via guarded dynamic import): unit stats = ROSTER[kind] ?? CONFIG.units[kind].
+//    Assumed entry fields: { faction, building:'barracks'|'factory'|'cc' (or array), role:'inf'|'light'|'heavy'|
+//    'harvester'|'special'|'air'|'aa', hp, speed, range, dps, cooldown, cost, buildTime, supply, r, cls, light, air,
+//    canHitAir, canHitGround, armor, sight, rps:{inf,veh,bld,light,air} }. A building of team t produces the roster
+//    kinds with matching `building` and faction world.factions[t], plus the legacy CONFIG kinds (fallback).
+//    Harvester = role 'harvester' | harvester:true | kind ends with 'harvester'.
+//  - Unit flags: air (y=8, ignores ground obstacles/walls/pathing, only hit by canHitAir), canHitGround:false,
+//    burrowed (untargetable, always hidden from the player when enemy, no attacks, 0.7x speed), armor (fractional
+//    reduction applied after status.dmgMul). Defense turrets: turret_mg canHitAir (defense.js uses sim.canHit).
 import { CONFIG } from './config.js';
+
+// Optional faction roster (ROSTER worker). Missing file => legacy CONFIG.units only.
+let ROSTER = {};
+try {
+  const m = await import('./roster.js');
+  ROSTER = m.ROSTER || m.default || m.roster || {};
+} catch (err) { console.warn('[sim] roster.js not loaded, using CONFIG.units:', err?.message); }
 
 const COMBAT_KINDS = ['warden', 'raider', 'tank'];
 const PRODUCES = { barracks: ['warden', 'raider'], factory: ['tank', 'harvester'], cc: ['harvester'] }; // cc: fallback when factory is lost
@@ -32,6 +54,8 @@ const TURRETS = new Set(['turret_mg', 'turret_cannon', 'artillery']);
 
 export function createSim(world) {
   const C = CONFIG;
+  const unitDef = (kind) => ROSTER[kind] ?? C.units[kind];
+  const isHarvKind = (kind) => { const r = ROSTER[kind]; return !!(r && (r.role === 'harvester' || r.harvester)) || /harvester$/.test(kind); };
   const ents = world.entities || (world.entities = []);
   const ui = world.ui || (world.ui = {});
   const bus = world.bus;
@@ -59,7 +83,26 @@ export function createSim(world) {
   let staticObs = [];
   let lastCmd = null;
   let staticVer = 0;
-  const counts = Array.from({ length: NT }, () => ({ units: 0, army: 0, harv: 0, warden: 0, raider: 0, tank: 0 }));
+  const counts = Array.from({ length: NT }, () => ({ units: 0, army: 0, harv: 0, warden: 0, raider: 0, tank: 0, inf: 0, veh: 0, air: 0, armored: 0 }));
+  // per-team production lists from the roster (+ legacy fallback)
+  const producesFor = (b) => {
+    const f = world.factions?.[b.team];
+    const out = [];
+    for (const k in ROSTER) {
+      const r = ROSTER[k];
+      if (!r || (r.faction && r.faction !== f)) continue;
+      const bl = Array.isArray(r.building) ? r.building : [r.building];
+      if (bl.includes(b.kind)) out.push(k);
+    }
+    for (const k of PRODUCES[b.kind] || []) if (!out.includes(k)) out.push(k);
+    if (b.kind === 'cc') { const hk = harvKindFor(b.team); if (!out.includes(hk)) out.push(hk); }
+    return out;
+  };
+  const harvKindFor = (team) => {
+    const f = world.factions?.[team];
+    for (const k in ROSTER) if (ROSTER[k]?.faction === f && isHarvKind(k)) return k;
+    return 'harvester';
+  };
   const perf = { stepMs: 0, fogMs: 0, paths: 0 };
 
   const emit = (name, detail) => { try { bus?.dispatchEvent(new CustomEvent(name, { detail })); } catch (_) {} };
@@ -135,8 +178,11 @@ export function createSim(world) {
 
   // ---------------------------------------------------------------- spawn
   function spawn(kind, team, x, z, opts) {
-    const u = C.units[kind], b = C.buildings[kind], d = C.defenses[kind];
-    const s = u || b || d || {};
+    const hero = kind === 'hero';
+    const u = unitDef(kind) || (hero ? { cls: 'inf', supply: 0 } : null), b = C.buildings[kind], d = C.defenses[kind];
+    const base = u || b || d || {};
+    const os = opts?.stats;
+    const s = os ? { ...base, ...os } : base;
     const e = {
       id: nextId++, kind, team,
       x, z, rot: Math.atan2(z, -x) || 0,     // face the map center
@@ -149,9 +195,15 @@ export function createSim(world) {
       aggressive: false, autoTarget: false, scan: Math.random() * C.aggro.scanInterval,
       harvT: 0, field: null, idleT: 0, manual: false, stall: 0, stallRef: null,
       hidden: false,
+      harv: !!u && isHarvKind(kind), air: !!s.air, canHitAir: !!s.canHitAir, canHitGround: s.canHitGround !== false,
+      armor: s.armor ?? 0, burrowed: !!s.burrowed, y: s.air ? 8 : 0,
     };
+    if (s.sight != null) e.sight = s.sight;
+    if (s.faction) e.faction = s.faction; else if (team >= 0) e.faction = world.factions?.[team];
     if (kind === 'crystal') { e.amount = b.amount; e.blockR = b.blockR ?? e.r; }
     if (opts) Object.assign(e, opts);
+    e.y = e.air ? (e.y || 8) : 0;
+    if (hero) { e.hero = true; if (!e.cls || e.cls === 'bld') e.cls = 'inf'; }
     if (e.hpMax < e.hp) e.hpMax = e.hp;
     try {
       e.mesh = world.makeMesh ? world.makeMesh(kind, team) : null;
@@ -159,7 +211,7 @@ export function createSim(world) {
     if (e.mesh) {
       e.mesh.userData = e.mesh.userData || {};
       e.mesh.userData.entity = e;
-      e.mesh.position?.set?.(x, 0, z);
+      e.mesh.position?.set?.(x, e.y, z);
       if (e.mesh.rotation) e.mesh.rotation.y = e.rot;
       world.scene?.add?.(e.mesh);
     }
@@ -200,7 +252,9 @@ export function createSim(world) {
   function sightOf(e) {
     const S = C.fog.sight;
     let s;
-    if (e.isUnit) s = e.kind === 'harvester' ? S.harvester : e.cls === 'inf' ? S.inf : S.veh;
+    if (e.stats?.sight > 0) s = e.stats.sight + (e.isUnit ? 0 : e.r);
+    else if (e.sight > 0) s = e.sight + (e.isUnit ? 0 : e.r);
+    else if (e.isUnit) s = e.harv ? S.harvester : e.cls === 'inf' ? S.inf : S.veh;
     else if (TURRETS.has(e.kind) || e.siege) s = S.turret * (e.tall ? C.fog.tallMul : 1) + e.r;
     else s = S.bld + e.r;
     if (world.defense?.hasSurveillance?.(0)) s *= C.fog.survMul;
@@ -253,7 +307,7 @@ export function createSim(world) {
     const on = !!fog.enabled;
     for (let i = 0; i < ents.length; i++) {
       const e = ents[i];
-      e.hidden = on && e.team > 0 ? !visibleAt(e) : false;
+      e.hidden = e.team > 0 && (e.burrowed || (on && !visibleAt(e)));
     }
   }
   function fogTick(dt) {
@@ -321,7 +375,7 @@ export function createSim(world) {
     bases[t] = { cc: ccE, field: { x: fx, z: fz, r: M.fieldSpread + C.buildings.crystal.r } , fieldEnts };
   }
   for (const f of M.centerFields) field(f.fx * hw, f.fz * hh, M.centerCrystals, M.centerSpread, { home: -1, rich: true });
-  for (let t = 0; t < NT; t++) spawnAtRally(byKind('factory', t), 'harvester');
+  for (let t = 0; t < NT; t++) spawnAtRally(byKind('factory', t) || hq[t], harvKindFor(t));
 
   function byKind(kind, team) { return ents.find(e => e.kind === kind && e.team === team && e.state !== 'dead'); }
 
@@ -342,7 +396,7 @@ export function createSim(world) {
   function supplyUsed(team) {
     let s = 0;
     for (const e of ents) if (e.team === team && e.isUnit && e.state !== 'dead') s += e.supply;
-    for (const [, q] of queues) for (const it of q) if (it.team === team) s += C.units[it.kind].supply;
+    for (const [, q] of queues) for (const it of q) if (it.team === team) s += unitDef(it.kind)?.supply ?? 1;
     return s;
   }
   function totalUnits() {
@@ -361,9 +415,9 @@ export function createSim(world) {
     if (typeof building === 'string') building = byKind(building, 0);
     const fail = (t) => { if (!building || building.team === 0) message(t); return false; };
     if (!building || building.state === 'dead') return fail('Building not available');
-    const allowed = PRODUCES[building.kind];
-    if (!allowed || !allowed.includes(kind)) return fail(`${building.kind} can't build ${kind}`);
-    const team = building.team, u = C.units[kind];
+    const allowed = producesFor(building);
+    if (!allowed.includes(kind) || !unitDef(kind)) return fail(`${building.kind} can't build ${kind}`);
+    const team = building.team, u = unitDef(kind);
     let q = queues.get(building.id);
     if (!q) { q = []; queues.set(building.id, q); }
     if (q.length >= C.queueMax) return fail('Queue full');
@@ -386,20 +440,31 @@ export function createSim(world) {
         q.shift();
         const e = spawnAtRally(b, it.kind);
         emit('built', { entity: e });
-        if (b.team === 0) message(`${it.kind[0].toUpperCase() + it.kind.slice(1)} ready`, 1500);
+        if (b.team === 0) { const nm = unitDef(it.kind)?.name || it.kind.replace(/^[a-z]+_/, ''); message(`${nm[0].toUpperCase() + nm.slice(1)} ready`, 1500); }
       }
     }
   }
 
   // ---------------------------------------------------------------- combat
   function mul(attackerKind, victim) {
-    const t = C.rps[attackerKind] || C.rpsDefault;
+    const t = ROSTER[attackerKind]?.rps || C.rps[attackerKind] || C.rpsDefault;
+    if (victim.air && t.air != null) return t.air;
     if (victim.light && t.light != null) return t.light;
     return t[victim.cls] ?? 1;
+  }
+  // Can attacker a hit victim v at all? (air / ground / burrowed rules)
+  function canHit(a, v) {
+    if (!v || v.burrowed) return false;
+    if (v.air) return !!a.canHitAir;
+    return a.canHitGround !== false;
   }
 
   function damage(victim, attacker, dmg) {
     if (!victim || victim.state === 'dead' || victim.cls === 'neutral' || !(dmg > 0)) return;
+    const vs = victim.status;
+    if (vs && vs.dmgMul != null && Number.isFinite(vs.dmgMul) && !(vs.until != null && now() > vs.until)) dmg *= Math.max(0, vs.dmgMul);
+    if (victim.armor > 0) dmg *= 1 - Math.min(0.9, victim.armor);
+    if (!(dmg > 0)) return;
     victim.hp -= dmg;
     emit('hit', { x: victim.x, z: victim.z, attacker, victim, dmg, cls: victim.cls });
     // Retaliate: an idle/auto unit that gets shot engages its attacker.
@@ -472,7 +537,7 @@ export function createSim(world) {
     const cand = near(e.x, e.z, radius, qTarget);
     for (let i = 0; i < cand.length; i++) {
       const o = cand[i];
-      if (!isEnemyOf(e, o)) continue;
+      if (!isEnemyOf(e, o) || !canHit(e, o)) continue;
       if (turret && o.cls === 'bld') continue;
       const d = edgeDist(e, o);
       if (d > radius) continue;
@@ -486,11 +551,12 @@ export function createSim(world) {
     // local first (cheap), then global fallback over structures
     let best = null, bd = Infinity;
     for (const o of near(e.x, e.z, 60, qTarget)) {
-      if (o.cls !== 'bld' || !isEnemyOf(e, o)) continue;
+      if (o.cls !== 'bld' || !isEnemyOf(e, o) || !canHit(e, o)) continue;
       const d = edgeDist(e, o);
       if (d < bd) { bd = d; best = o; }
     }
     if (best) return best;
+    if (e.canHitGround === false) return null;
     for (const o of staticObs) {
       if (o.cls !== 'bld' || !isEnemyOf(e, o)) continue;
       const d = edgeDist(e, o);
@@ -501,14 +567,14 @@ export function createSim(world) {
 
   function fire(e, t) {
     const m = mul(e.kind, t);
-    const gy = C.gunY[e.cls] ?? 1.5, ty = t.cls === 'inf' ? 1 : t.cls === 'veh' ? 1.2 : 2;
+    const gy = (e.air ? e.y : 0) + (C.gunY[e.cls] ?? 1.5), ty = t.air ? (t.y || 8) : t.cls === 'inf' ? 1 : t.cls === 'veh' ? 1.2 : 2;
     emit('shot', { from: { x: e.x, z: e.z, y: gy }, to: { x: t.x, z: t.z, y: ty }, kind: e.kind });
     const dmg = e.dps * e.fireRate * m;
     if (e.splash > 0) {
       const tx = t.x, tz = t.z, sr = e.splash;
       const cand = near(tx, tz, sr, qSplash).slice();
       for (const o of cand) {
-        if (!isEnemyOf(e, o)) continue;
+        if (!isEnemyOf(e, o) || !canHit(e, o)) continue;
         if (Math.hypot(o.x - tx, o.z - tz) - o.r <= sr) damage(o, e, e.dps * e.fireRate * mul(e.kind, o));
       }
     } else if (dmg > 0) damage(t, e, dmg);
@@ -543,18 +609,30 @@ export function createSim(world) {
     // Team-tagged obstacles (gates) only block the other team; untagged block everyone.
     if ((o.team == null || o.team !== e.team) && !(o.owner && ghostSkips(e, o.owner))) avoid(o.x, o.z, o.r);
   }
+  function moveSpeed(e) {
+    let v = e.speed;
+    if (e.burrowed) v *= 0.7;
+    const st = e.status;
+    if (st) {
+      if (Number.isFinite(st.slowMul)) v *= Math.max(0, st.slowMul);
+      if (Number.isFinite(st.speedMul)) v *= Math.max(0, st.speedMul);
+    }
+    return v;
+  }
   function steer(e, tx, tz, dt, ignore) {
     let dx = tx - e.x, dz = tz - e.z;
     const dist = Math.hypot(dx, dz);
     if (dist < 1e-4) return 0;
+    if (e._noMove) return dist;          // rooted / stunned
+    const spd = moveSpeed(e);
     dx /= dist; dz /= dist;
     sE = e; sDx = dx; sDz = dz; sDist = dist; sSx = dx; sSz = dz; sIgnore = ignore;
-    eachObs(e.x, e.z, LOOK + e.r + 1, avoidObs);
+    if (!e.air) eachObs(e.x, e.z, LOOK + e.r + 1, avoidObs);   // flyers ignore ground obstacles/walls
     // Other units: avoid ones that aren't travelling with us (prevents head-on harvester deadlocks).
     const cand = near(e.x, e.z, 10, qSteer);
     for (let i = 0; i < cand.length; i++) {
       const o = cand[i];
-      if (!o.isUnit || o === e || o === ignore || o.state === 'dead') continue;
+      if (!o.isUnit || o === e || o === ignore || o.state === 'dead' || o.air !== e.air) continue;
       const ox = o.x - e.x, oz = o.z - e.z;
       if (ox * ox + oz * oz > 100) continue;
       if (o.state !== 'idle' && Math.cos(o.rot) * dx - Math.sin(o.rot) * dz > 0.5) continue;
@@ -564,12 +642,12 @@ export function createSim(world) {
     // Stuck fallback: if we barely moved since the last steer call, sidestep for a moment.
     if (e._px != null) {
       const moved = Math.hypot(e.x - e._px, e.z - e._pz);
-      if (moved < 0.2 * e.speed * dt) e.stuckT = (e.stuckT || 0) + dt; else e.stuckT = Math.max(0, (e.stuckT || 0) - dt);
+      if (moved < 0.2 * spd * dt) e.stuckT = (e.stuckT || 0) + dt; else e.stuckT = Math.max(0, (e.stuckT || 0) - dt);
       if (e.stuckT > 0.8 && !(e.detour > 0)) { e.detour = 1.2; e.detourSide = Math.random() < 0.5 ? -1 : 1; e.stuckT = 0; }
     }
     if (e.detour > 0) { e.detour -= dt; sx += -dz * e.detourSide * 1.8; sz += dx * e.detourSide * 1.8; }
     const sl = Math.hypot(sx, sz) || 1;
-    const step = Math.min(e.speed * dt, dist);
+    const step = Math.min(spd * dt, dist);
     const vx = sx / sl, vz = sz / sl;
     e.x += vx * step; e.z += vz * step;
     e._px = e.x; e._pz = e.z;
@@ -694,6 +772,7 @@ export function createSim(world) {
   }
   // Move toward (tx,tz) via path if needed; returns remaining distance to (tx,tz).
   function nav(e, tx, tz, dt, ignore) {
+    if (e.air) return steer(e, tx, tz, dt, ignore);
     const g = gridFor(e.team);
     let n = e._nav;
     const skip = ignore ? ignore.r + NAV_INFL + 1 : 1.5;
@@ -745,7 +824,7 @@ export function createSim(world) {
       const cand = near(a.x, a.z, a.r + 2.5, qCol);
       for (let j = 0; j < cand.length; j++) {
         const b = cand[j];
-        if (!b.isUnit || b.id <= a.id || b.state === 'dead') continue;
+        if (!b.isUnit || b.id <= a.id || b.state === 'dead' || b.air !== a.air) continue;
         const dx = b.x - a.x, dz = b.z - a.z, rr = a.r + b.r;
         if (dx > rr || dx < -rr || dz > rr || dz < -rr) continue;
         const d2 = dx * dx + dz * dz;
@@ -759,7 +838,7 @@ export function createSim(world) {
     for (const e of units) {
       if (e.ghost > 0) e.ghost -= lastDt;
       pE = e;
-      eachObs(e.x, e.z, e.r + 0.5, pushObs);
+      if (!e.air) eachObs(e.x, e.z, e.r + 0.5, pushObs);
       if (e.x > half.w) e.x = half.w; else if (e.x < -half.w) e.x = -half.w;
       if (e.z > half.h) e.z = half.h; else if (e.z < -half.h) e.z = -half.h;
       if (!Number.isFinite(e.x) || !Number.isFinite(e.z)) { e.x = e._px ?? 0; e.z = e._pz ?? 0; if (!Number.isFinite(e.x)) e.x = 0; if (!Number.isFinite(e.z)) e.z = 0; }
@@ -788,7 +867,7 @@ export function createSim(world) {
     const n = sel.length, cols = Math.ceil(Math.sqrt(n)), sp = 3.2;
     sel.forEach((e, i) => {
       e.aggressive = false; e.autoTarget = false; e.manual = false;
-      if (cmd.type === 'attack' && tgt && isEnemyOf(e, tgt) && e.dps > 0) {
+      if (cmd.type === 'attack' && tgt && isEnemyOf(e, tgt) && e.dps > 0 && canHit(e, tgt)) {
         e.state = 'attack'; e.target = tgt; e.dest = null;
         return;
       }
@@ -796,7 +875,7 @@ export function createSim(world) {
       const x = (tgt ? tgt.x : cmd.x) + (n > 1 ? ox : 0), z = (tgt ? tgt.z : cmd.z) + (n > 1 ? oz : 0);
       if (!Number.isFinite(x) || !Number.isFinite(z)) return;
       e.state = 'move'; e.target = null; e.dest = { x, z }; e.stall = 0; e.stallRef = null;
-      if (e.kind === 'harvester') {
+      if (e.harv) {
         e.manual = true;
         // Tapping a crystal with a harvester = gather there.
         if (tgt && tgt.kind === 'crystal') { e.manual = false; e.field = tgt; e.state = 'gather'; e.dest = null; e.harvT = 0; }
@@ -835,7 +914,7 @@ export function createSim(world) {
 
   function updateCombat(e, dt) {
     let t = e.target;
-    if (!t || t.state === 'dead') t = e.target = null;
+    if (!t || t.state === 'dead' || !canHit(e, t)) t = e.target = null;
     if (e.autoTarget || !t) {
       e.scan -= dt;
       if (e.scan <= 0) {
@@ -859,7 +938,7 @@ export function createSim(world) {
     const ang = Math.atan2(e.z - t.z, t.x - e.x);
     if (d <= rng) {
       if (e.isUnit) turnTo(e, ang, dt); else e.rot = ang;
-      if (e.cooldown <= 0) { e.cooldown = e.fireRate; fire(e, t); }
+      if (e.cooldown <= 0 && !e._stunned && !e.burrowed) { e.cooldown = e.fireRate; fire(e, t); }
     } else if (e.isUnit) {
       nav(e, t.x, t.z, dt, t);
     }
@@ -874,7 +953,7 @@ export function createSim(world) {
       if (o.kind !== 'crystal' || o.state === 'dead' || !(o.amount > 0)) continue;
       if (o.home != null && o.home !== -1 && o.home !== e.team) continue;   // never mine another base's field
       let occ = 0;
-      for (const h of unitsBuf) if (h !== e && h.kind === 'harvester' && h.field === o) occ++;
+      for (const h of unitsBuf) if (h !== e && h.harv && h.field === o) occ++;
       const s = Math.hypot(o.x - home.x, o.z - home.z) + Math.hypot(o.x - e.x, o.z - e.z) * 0.25 + occ * 6;
       if (s < bs) { bs = s; best = o; }
     }
@@ -937,6 +1016,45 @@ export function createSim(world) {
     if (t === 1 && d?.enemyReserve != null) return d.enemyReserve;
     return C.pacing.enemyReserve;
   };
+  // Combat kinds team t can build now: its faction's roster kinds if the roster has any, else the legacy kinds.
+  function aiOptions(t, blds) {
+    const f = world.factions?.[t];
+    const hasRoster = Object.keys(ROSTER).some(k => ROSTER[k]?.faction === f);
+    const out = [];
+    for (const b of blds) {
+      if (!b) continue;
+      for (const k of producesFor(b)) {
+        if (isHarvKind(k) || (hasRoster && !ROSTER[k]) || (!hasRoster && !COMBAT_KINDS.includes(k))) continue;
+        const u = unitDef(k);
+        if (!u || !(u.cost >= 0)) continue;
+        if (!(u.dps > 0) && u.role !== 'special') continue;
+        out.push({ kind: k, b });
+      }
+    }
+    return out;
+  }
+  const ROLE_W = { inf: 3, light: 2, heavy: 1.5, special: 1, air: 1.5, aa: 0.8 };
+  const LEGACY_ROLE = { warden: 'inf', raider: 'light', tank: 'heavy' };
+  const DUMMY = { inf: { cls: 'inf' }, veh: { cls: 'veh' }, air: { cls: 'veh', air: true } };
+  function aiWeight(kind, rc) {
+    const u = unitDef(kind);
+    const role = u.role || LEGACY_ROLE[kind] || (u.air ? 'air' : u.cls === 'inf' ? 'inf' : u.light ? 'light' : 'heavy');
+    let w = ROLE_W[role] ?? 1;
+    if (!rc) return w;
+    const tot = rc.inf + rc.veh + rc.air;
+    if (!tot) return role === 'aa' ? w * 0.3 : w;
+    const fa = rc.air / tot;
+    let edge = 0;
+    for (const c of ['inf', 'veh', 'air']) {
+      const f = rc[c] / tot; if (!f) continue;
+      const hits = c === 'air' ? !!u.canHitAir : u.canHitGround !== false;
+      edge += f * ((hits ? mul(kind, DUMMY[c]) : 0) - 1);
+    }
+    w *= Math.max(0.15, 1 + C.pacing.counterWeight * edge);
+    if (u.canHitAir && fa > 0) w *= 1 + 2 * fa;
+    if (role === 'aa' && fa === 0) w *= 0.3;
+    return w;
+  }
   function aiTeam(t, dt) {
     const st = AI[t];
     if (!st.alive || !hq[t]) return;
@@ -950,25 +1068,26 @@ export function createSim(world) {
       const reserve = reserveFor(t);
       const army = counts[t].army;
       // Below the minimum army the AI spends everything on units; above it, it banks for defense tiers.
-      const canBuy = (k) => crystals[t] - C.units[k].cost >= (T > P.firstWave && army >= P.enemyMinArmy ? reserve : 0);
-      // harvesters
-      const hb = fac || hq[t];   // cc builds harvesters if the factory is gone
-      const harvs = counts[t].harv + qOf(hb).filter(q => q.kind === 'harvester').length;
+      const canBuy = (k) => crystals[t] - unitDef(k).cost >= (T > P.firstWave && army >= P.enemyMinArmy ? reserve : 0);
+      // harvesters (faction kind; cc builds them if the producing building is gone)
+      const hk = harvKindFor(t);
+      const hb = [fac, bar, hq[t]].find(b => b && producesFor(b).includes(hk));
+      const harvs = counts[t].harv + (hb ? qOf(hb).filter(q => isHarvKind(q.kind)).length : 0);
       const want = T >= P.enemyThirdHarvesterAt ? P.enemyHarvesters
         : T >= P.enemySecondHarvesterAt ? Math.min(2, P.enemyHarvesters) : 1;
-      if (hb && harvs < want && qOf(hb).length < P.enemyMaxQueued && crystals[t] >= C.units.harvester.cost) enqueue(hb, 'harvester');
-      // army mix, skewed toward counters of the current rival's army
+      if (hb && harvs < want && qOf(hb).length < P.enemyMaxQueued && crystals[t] >= (unitDef(hk)?.cost ?? 100)) enqueue(hb, hk);
+      // army: weighted pick from this faction's roster, skewed toward counters of the current rival's army
       const rival = nearestEnemyHQ(t);
-      const rc = rival ? counts[rival.team] : { warden: 0, raider: 0, tank: 0 };
-      const pi = rc.warden, pr = rc.raider, pt = rc.tank;
-      const tot = pi + pr + pt || 1, cw = P.counterWeight, mix = P.enemyMix;
-      const w = { warden: mix.warden + cw * 6 * pt / tot, raider: mix.raider + cw * 6 * pi / tot, tank: mix.tank + cw * 6 * pr / tot };
-      for (let tries = 0; tries < 2; tries++) {
-        let r = Math.random() * (w.warden + w.raider + w.tank), kind = 'warden';
-        for (const k of COMBAT_KINDS) { if ((r -= w[k]) <= 0) { kind = k; break; } }
-        if (kind === 'tank' && !fac) kind = 'warden';
-        const b = kind === 'tank' ? fac : bar;
-        if (b && qOf(b).length < P.enemyMaxQueued && canBuy(kind) && supplyUsed(t) + C.units[kind].supply <= C.supplyCap) enqueue(b, kind);
+      const opts = aiOptions(t, [bar, fac]);
+      if (opts.length) {
+        const w = opts.map(o => aiWeight(o.kind, rival ? counts[rival.team] : null));
+        const sum = w.reduce((x, y) => x + y, 0);
+        for (let tries = 0; tries < 2; tries++) {
+          let r = Math.random() * sum, pick = opts[0];
+          for (let i = 0; i < opts.length; i++) { if ((r -= w[i]) <= 0) { pick = opts[i]; break; } }
+          const u = unitDef(pick.kind);
+          if (qOf(pick.b).length < P.enemyMaxQueued && canBuy(pick.kind) && supplyUsed(t) + (u.supply ?? 1) <= C.supplyCap) enqueue(pick.b, pick.kind);
+        }
       }
     }
     if (T >= st.nextWave) {
@@ -1009,7 +1128,7 @@ export function createSim(world) {
     for (const e of unitsBuf) {
       const m = e.mesh;
       if (!m) continue;
-      m.position?.set?.(e.x, 0, e.z);
+      m.position?.set?.(e.x, e.air ? e.y : 0, e.z);
       // e.rot is the mesh yaw: meshes face local +X, so heading (dx,dz) => rot = atan2(-dz, dx) == -atan2(dz, dx).
       if (m.rotation) m.rotation.y = e.rot;
       // Out of combat, swing the turret back to the hull's forward so vehicles don't look like they drive sideways.
@@ -1024,6 +1143,23 @@ export function createSim(world) {
     perf.stepMs = performance.now() - t0;
   }
 
+  const now = () => world.clock?.t ?? T;
+  const active = (v, t) => v === true || (typeof v === 'number' && v > t);
+  function applyStatus(e) {
+    const s = e.status, t = now();
+    if (s.until != null && t > s.until) { e.status = null; e._noMove = e._stunned = false; return; }
+    e._stunned = active(s.stunned, t);
+    e._noMove = e._stunned || active(s.rooted, t);
+  }
+  function syncStats(e) {
+    const s = e.stats;
+    if (s.speed != null) e.speed = s.speed;
+    if (s.range != null) e.range = s.range;
+    if (s.dps != null) e.dps = s.dps;
+    if (s.cooldown != null) e.fireRate = s.cooldown;
+    if (s.r != null) e.r = s.r;
+  }
+
   let lastDt = 0;
   function step(dt) {
     T += dt; lastDt = dt;
@@ -1036,10 +1172,18 @@ export function createSim(world) {
       const e = ents[i];
       if (!e.isUnit || e.state === 'dead') continue;
       unitsBuf.push(e);
+      if (e.stats) syncStats(e);
+      if (e.status) applyStatus(e); else if (e._noMove) e._noMove = e._stunned = false;
       const c = counts[e.team];
       if (!c) continue;
       c.units++;
-      if (e.kind === 'harvester') c.harv++; else { c.army++; c[e.kind]++; }
+      if (e.harv) c.harv++;
+      else {
+        c.army++;
+        if (c[e.kind] != null) c[e.kind]++;
+        if (e.air) c.air++; else if (e.cls === 'inf') c.inf++; else c.veh++;
+        if (e.armor >= 0.2 || (e.cls === 'veh' && !e.light)) c.armored++;
+      }
     }
     hashRebuild();
     obsHash();
@@ -1050,7 +1194,7 @@ export function createSim(world) {
       if (e.state === 'dead') continue;
       if (e.cooldown > 0) e.cooldown -= dt;
       if (e.isUnit) {
-        if (e.kind === 'harvester') updateHarvester(e, dt);
+        if (e.harv) updateHarvester(e, dt);
         else if (e.state === 'move') updateMover(e, dt);
         else if (e.state === 'attack') updateCombat(e, dt);
         else if (e.state === 'idle') {
@@ -1099,7 +1243,7 @@ export function createSim(world) {
   writeUi();
 
   const sim = {
-    update, enqueue, buildDefense, spawn, damage, spendCrystals, mul, kill, near,
+    update, enqueue, buildDefense, spawn, damage, spendCrystals, mul, kill, near, canHit, producesFor, unitDef, roster: ROSTER,
     entities: ents, crystals, queues, config: C, counts, perf, bases, hq, ai: AI,
     teamCount: NT,
     get time() { return T; },

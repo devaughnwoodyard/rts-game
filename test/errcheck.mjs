@@ -1,0 +1,13 @@
+import { chromium } from 'playwright';
+import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path';
+const root = process.argv[2];
+const mime = { '.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.jpg':'image/jpeg','.glb':'model/gltf-binary','.gltf':'model/gltf+json','.bin':'application/octet-stream','.hdr':'application/octet-stream' };
+const server = http.createServer((q,r)=>{let p=decodeURIComponent(q.url.split('?')[0]); if(p==='/')p='/index.html'; const f=path.join(root,p); if(!fs.existsSync(f)||fs.statSync(f).isDirectory()){r.writeHead(404);return r.end();} r.writeHead(200,{'Content-Type':mime[path.extname(f)]||'application/octet-stream'}); fs.createReadStream(f).pipe(r);});
+await new Promise(r=>server.listen(0,r));
+const b = await chromium.launch({ args:['--use-gl=swiftshader','--enable-unsafe-swiftshader','--ignore-gpu-blocklist'] });
+const p = await (await b.newContext({ viewport:{width:844,height:390}, deviceScaleFactor:1 })).newPage();
+const errs=[]; p.on('pageerror',e=>errs.push(String(e))); p.on('console',m=>{if(m.type()==='error')errs.push(m.text())}); p.on('response',r=>{if(r.status()>=400)errs.push('404 '+r.url())});
+await p.goto(`http://127.0.0.1:${server.address().port}/`); await p.waitForTimeout(15000);
+const s = await p.evaluate(()=>({ents:window.world?.entities?.length, t:window.world?.clock?.t, map:window.world?.map, fps:window.world?.fps}));
+console.log(JSON.stringify(s)); console.log('ERRORS', errs.length, errs.slice(0,6).join('\n'));
+await b.close(); server.close();

@@ -1046,7 +1046,7 @@ export function createFx(world) {
   function abilityStats() { return { quads: qn, fx: fxs.length, roots: spikes.count, projectiles: projs.length, bubbles: bubbles.a.filter(b => b.m.visible).length }; }
 
   // ------------------------------------------------------------------ update
-  return {
+  return world.fx = {
     update(dt) {
       dt = Math.min(0.1, dt ?? world.clock?.dt ?? 0.016);
       const cvs = world.renderer?.domElement;

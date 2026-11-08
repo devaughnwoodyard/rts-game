@@ -64,6 +64,14 @@ function rustTex() { // Crimson: corrugated sheet, rust streaks, scratches
   for (let y = 0; y < 256; y += 128) for (let x = 6; x < 256; x += 24) { g.fillStyle = 'rgba(30,15,8,0.6)'; g.fillRect(x, y + 4, 3, 3); }
   return (TEX.rust = texFrom(c));
 }
+function corrTex() { // clean light corrugation (multiplied by paint colour)
+  if (TEX.corr) return TEX.corr;
+  const [c, g] = canvas(256, 256), r = rng(29);
+  for (let x = 0; x < 256; x++) { const v = 215 + 40 * Math.sin(x / 16 * TAU); g.fillStyle = `rgb(${v | 0},${v | 0},${v | 0})`; g.fillRect(x, 0, 1, 256); }
+  blotches(g, r, 90, '30,30,35', 0.06, 18);
+  for (let i = 0; i < 25; i++) { const x = r() * 256, y = r() * 256, l = 20 + r() * 60; g.fillStyle = 'rgba(60,40,30,0.18)'; g.fillRect(x, y, 2, l); }
+  return (TEX.corr = texFrom(c));
+}
 function grimeTex() { // Crimson solids: grime + welds
   if (TEX.grime) return TEX.grime;
   const [c, g] = canvas(256, 256), r = rng(37);
@@ -256,7 +264,7 @@ function mats(theme) {
     glow, fire: fireMat(), smoke: smokeMat(), ember: emberMat(), haze: smokeMat([0.55, 0.3, 0.12], 0.35, true), ...pbrMats(),
   };
   else if (theme === 'X') { // volcanic: glossy obsidian/iron + dark basalt
-    const b = mats('C'), bas = pbr('rocky_terrain_02').clone(); bas.color.setRGB(1.35, 1.2, 1.15); bas.envMapIntensity = 0.6;
+    const b = mats('C'), bas = pbr('rocky_terrain_02').clone(); bas.color.setRGB(2.0, 1.75, 1.65); bas.envMapIntensity = 0.6;
     m = { ...b, stone: bas, solid: new T.MeshStandardMaterial({ vertexColors: true, map: grimeTex(), metalness: 0.3, roughness: 0.18, envMap: env, envMapIntensity: 1.8 }),
       haze: smokeMat([0.6, 0.55, 0.35], 0.3, false) };
   }
@@ -266,7 +274,7 @@ function mats(theme) {
       haz: new T.MeshStandardMaterial({ vertexColors: true, map: hazTex(), metalness: 0.3, roughness: 0.6, envMap: env, envMapIntensity: 0.4 }),
       glow, smoke: smokeMat([0.5, 0.5, 0.52], 0.55, false) };
     for (const k of ['conc', 'corr', 'steel', 'shutter']) m[k].envMapIntensity = 0.7;
-    m.conc.color.setRGB(0.92, 1.0, 1.12); m.corr.color.setRGB(1.7, 1.7, 1.7); m.steel.color.setRGB(1.6, 1.6, 1.6);
+    m.conc.color.setRGB(0.85, 0.95, 1.15); m.corr.map = corrTex(); m.corr.color.setRGB(1.1, 1.1, 1.1); m.steel.map = panelTex(); m.steel.color.setRGB(1.0, 1.0, 1.0); m.conc.color.setRGB(0.8, 0.9, 1.1);
   }
   else if (theme === 'E') {
     const st = pbr('rocky_terrain_02').clone(); st.color.setRGB(1.7, 1.45, 1.3);
@@ -2507,7 +2515,7 @@ function decorForge(k, lx, lz, i, r, ry) {
   }
 }
 
-const VOLC = { sand: 0x6a5e58, sand2: 0x7a6c64, rock: 0x4a3c36, rock2: 0x2a1c1a, iron: 0x2b2724, iron2: 0x161012, steel: 0x3e3634,
+const VOLC = { sand: 0x6a5e58, sand2: 0x7a6c64, rock: 0x4a3c36, rock2: 0x3a2622, iron: 0x3a3430, iron2: 0x1c1416, steel: 0x4e4440,
   red: 0xa3241c, red2: 0x6e1a14, molten: 0xff5a12, gold: 0xffb340, brick: 0x8a6e66, lavaW: 0.5, spires: true, dark: true };
 const F0 = { ...F, lavaW: 0, spires: false, dark: false };
 function withPal(pal, fn) { return (v) => { Object.assign(F, pal); MAT_OVERRIDE = 'X'; try { return fn(v); } finally { Object.assign(F, F0); MAT_OVERRIDE = null; } }; }

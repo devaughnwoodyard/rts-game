@@ -42,6 +42,7 @@
 //    structures, no fog sight (noSight), traps always hidden from the player when enemy. defense.js triggers them.
 //  - e.env = {slow, sight, until} (set by defense.js zones/mines) multiplies move speed and fog sight while active.
 import { CONFIG } from './config.js';
+import { createEconomy } from './economy.js';
 
 // Optional faction roster (ROSTER worker). Missing file => legacy CONFIG.units only.
 let ROSTER = {};
@@ -73,8 +74,13 @@ export function createSim(world) {
   for (let t = 0; t < NT; t++) if (world.colors[t] == null) world.colors[t] = C.teams.colors[t];
   world.factions = C.teams.factions.slice(0, NT);
 
-  const crystals = [];
-  for (let t = 0; t < NT; t++) crystals[t] = t === 0 ? C.economy.startCrystals : C.economy.enemyStartCrystals;
+  // ECONOMY v3: currencies live in econ.res[team] = {primary, secondary}. `crystals` is a legacy shim (array-like
+  // proxy onto PRIMARY) so old callers (`sim.crystals[t]`, `crystals[t] += n`, `.map`) keep working.
+  let econ = null;
+  const crystals = new Proxy(new Array(NT).fill(0), {
+    get(tg, k, rcv) { if (typeof k === 'string' && /^\d+$/.test(k)) return econ ? econ.res[+k]?.primary ?? 0 : 0; return Reflect.get(tg, k, rcv); },
+    set(tg, k, v) { if (typeof k === 'string' && /^\d+$/.test(k)) { if (econ?.res[+k]) econ.res[+k].primary = +v || 0; return true; } return Reflect.set(tg, k, v); },
+  });
   const queues = new Map();      // building.id -> [{kind, progress, t, total, team}]
   const byId = new Map();
   let nextId = 1;
@@ -231,7 +237,7 @@ export function createSim(world) {
     // Buildings/crystals block movement. Walls/gates come via world.obstacles (defense.js).
     // trap/untargetable zone entities (mines, moat segments, sandstorm) never block via the structure list; moats
     // block through their own team-tagged world.obstacles entry.
-    staticObs = ents.filter(e => !e.isUnit && e.state !== 'dead' && e.kind !== 'wall' && e.kind !== 'gate' && !e.trap && !e.untargetable);
+    staticObs = ents.filter(e => !e.isUnit && e.state !== 'dead' && e.kind !== 'wall' && e.kind !== 'gate' && !e.trap && !e.untargetable && !e.noBlock && !e.isPlot);
     staticVer++;
   }
 
@@ -322,6 +328,16 @@ export function createSim(world) {
     if (fogT <= 0) { fogT = C.fog.interval; fogRecompute(); }
   }
 
+  // ---------------------------------------------------------------- economy (js/economy.js, owner ECON)
+  const H = {
+    ents, hq, spawn, kill, near, emit, message, unitDef, spotFree, nudgeFree,
+    now: () => T, units: () => unitsBuf, harvKindFor: (t) => harvKindFor(t),
+    toCenter: (x, z) => toCenter(x, z), nav: (e, x, z, dt, ig) => nav(e, x, z, dt, ig), updateMover: (e, dt) => updateMover(e, dt),
+    unitSupply: (t) => unitSupply(t),
+  };
+  econ = createEconomy(world, null, H);
+  world.econ = econ;
+
   // ---------------------------------------------------------------- setup
   const M = C.map;
   const hw = MW / 2, hh = MH / 2;
@@ -380,8 +396,10 @@ export function createSim(world) {
     const fieldEnts = field(fx, fz, M.fieldCrystals, M.fieldSpread, { home: t });
     bases[t] = { cc: ccE, field: { x: fx, z: fz, r: M.fieldSpread + C.buildings.crystal.r } , fieldEnts };
   }
-  for (const f of M.centerFields) field(f.fx * hw, f.fz * hh, M.centerCrystals, M.centerSpread, { home: -1, rich: true });
+  const centerFields = M.centerFields.map(f => ({ x: f.fx * hw, z: f.fz * hh, r: M.centerSpread + C.buildings.crystal.r,
+    ents: field(f.fx * hw, f.fz * hh, M.centerCrystals, M.centerSpread, { home: -1, rich: true }) }));
   for (let t = 0; t < NT; t++) spawnAtRally(byKind('factory', t) || hq[t], harvKindFor(t));
+  econ.setup(bases, centerFields);   // plots (incl. Aether crystal plots), processors, 2 starting extractors per base
 
   function byKind(kind, team) { return ents.find(e => e.kind === kind && e.team === team && e.state !== 'dead'); }
 
@@ -399,7 +417,9 @@ export function createSim(world) {
   }
 
   // ---------------------------------------------------------------- economy helpers
-  function supplyUsed(team) {
+  // units alive + queued (crew for defenses is added by econ)
+  function supplyUsed(team) { return unitSupply(team) + (econ ? econ.crewUsed(team) : 0); }
+  function unitSupply(team) {
     let s = 0;
     for (const e of ents) if (e.team === team && e.isUnit && e.state !== 'dead') s += e.supply;
     for (const [, q] of queues) for (const it of q) if (it.team === team) s += unitDef(it.kind)?.supply ?? 1;
@@ -411,10 +431,10 @@ export function createSim(world) {
     for (const [, q] of queues) n += q.length;
     return n;
   }
+  // Legacy shim: spends PRIMARY. New code: econ.spend(team, {primary, secondary}).
   function spendCrystals(team, n) {
-    if (!(n >= 0) || !(crystals[team] >= n)) return false;
-    crystals[team] -= n;
-    return true;
+    if (!(n >= 0)) return false;
+    return econ.spend(team, { primary: n, secondary: 0 });
   }
 
   function enqueue(building, kind) {
@@ -427,9 +447,10 @@ export function createSim(world) {
     let q = queues.get(building.id);
     if (!q) { q = []; queues.set(building.id, q); }
     if (q.length >= C.queueMax) return fail('Queue full');
-    if (supplyUsed(team) + u.supply > C.supplyCap) return fail('Supply cap reached');
+    if (supplyUsed(team) + (u.supply ?? 1) > econ.supplyCap(team)) return fail('Supply cap reached: build Housing');
     if (totalUnits() >= C.unitCap) return fail('Battlefield unit limit reached');
-    if (!spendCrystals(team, u.cost)) return fail('Not enough crystals');
+    const cost = econ.unitCost(kind);
+    if (!econ.spend(team, cost, 'army')) { const N = econ.names(team); return fail(econ.res[team].primary < cost.primary ? `Not enough ${N.primary}` : `Not enough ${N.secondary}`); }
     q.push({ kind, progress: 0, t: 0, total: u.buildTime, team });
     return true;
   }
@@ -504,6 +525,7 @@ export function createSim(world) {
       const i = ents.indexOf(e);
       if (i >= 0) ents.splice(i, 1);
       byId.delete(e.id);
+      econ.onDeath(e);
       if (e.mesh) world.scene?.remove?.(e.mesh);
       world.input?.selected?.delete?.(e);
       if (!e.isUnit) structural = true;
@@ -884,8 +906,9 @@ export function createSim(world) {
       e.state = 'move'; e.target = null; e.dest = { x, z }; e.stall = 0; e.stallRef = null;
       if (e.harv) {
         e.manual = true;
-        // Tapping a crystal with a harvester = gather there.
-        if (tgt && tgt.kind === 'crystal') { e.manual = false; e.field = tgt; e.state = 'gather'; e.dest = null; e.harvT = 0; }
+        // Tapping an own extractor (or the crystals of an own Aether plot) with a harvester = haul from there.
+        const x = tgt && (tgt.extractor ? tgt : tgt.plot?.ext || (tgt.isPlot ? tgt.ext : null));
+        if (x && x.team === e.team) econ.assignHarvester(e, x);
       }
     });
   }
@@ -953,57 +976,8 @@ export function createSim(world) {
     if (tur && tur.rotation) tur.rotation.y = ang - e.rot;
   }
 
-  function pickField(e) {
-    let best = null, bs = Infinity;
-    const home = hq[e.team] || e;
-    for (const o of staticObs) {
-      if (o.kind !== 'crystal' || o.state === 'dead' || !(o.amount > 0)) continue;
-      if (o.home != null && o.home !== -1 && o.home !== e.team) continue;   // never mine another base's field
-      let occ = 0;
-      for (const h of unitsBuf) if (h !== e && h.harv && h.field === o) occ++;
-      const s = Math.hypot(o.x - home.x, o.z - home.z) + Math.hypot(o.x - e.x, o.z - e.z) * 0.25 + occ * 6;
-      if (s < bs) { bs = s; best = o; }
-    }
-    return best;
-  }
-
-  function updateHarvester(e, dt) {
-    if (e.state === 'move') return updateMover(e, dt);
-    if (e.state === 'idle') {
-      e.idleT += dt;
-      if (e.manual && e.idleT < C.economy.idleHarvesterRestart) return;
-      e.manual = false;
-      if (e.carry > 0) { e.state = 'return'; e.harvT = 0; return; }
-      if (e.idleT < 0.5 && e.idleT > 0) { /* fallthrough */ }
-      e.field = pickField(e);
-      if (!e.field) return;
-      e.state = 'gather'; e.harvT = 0;
-    }
-    if (e.state === 'gather') {
-      const f = e.field;
-      if (!f || f.state === 'dead' || !(f.amount > 0)) { e.field = null; e.state = 'idle'; e.idleT = 99; return; }
-      const reach = f.r + e.r + 1.2;
-      if (Math.hypot(f.x - e.x, f.z - e.z) > reach) { nav(e, f.x, f.z, dt, f); e.harvT = 0; return; }
-      e.harvT += dt;
-      if (e.harvT >= C.economy.gatherTime) {
-        const want = C.economy.harvesterCarry * (f.rich ? C.economy.richMul : 1);
-        const take = Math.min(want, f.amount);
-        f.amount -= take; e.carry = take; e.harvT = 0; e.state = 'return';
-        if (f.amount <= 0) { f.depleted = true; kill(f); }
-      }
-    } else if (e.state === 'return') {
-      const cc = hq[e.team];
-      if (!cc || cc.state === 'dead') { e.state = 'idle'; return; }
-      const reach = cc.r + e.r + 1.5;
-      if (Math.hypot(cc.x - e.x, cc.z - e.z) > reach) { nav(e, cc.x, cc.z, dt, cc); e.harvT = 0; return; }
-      e.harvT += dt;
-      if (e.harvT >= C.economy.depositTime) {
-        crystals[e.team] += e.carry; e.carry = 0; e.harvT = 0;
-        e.state = e.field && e.field.state !== 'dead' ? 'gather' : 'idle';
-        e.idleT = 99;
-      }
-    }
-  }
+  // Harvesters: econ.updateHarvester (extractor stock -> nearest own processor).
+  const updateHarvester = (e, dt) => econ.updateHarvester(e, dt);
 
   // ---------------------------------------------------------------- AI (teams 1..NT-1, independent)
   function nearestEnemyHQ(t) {
@@ -1066,7 +1040,8 @@ export function createSim(world) {
     const st = AI[t];
     if (!st.alive || !hq[t]) return;
     const P = C.pacing;
-    crystals[t] += (P.enemyTrickleBase + P.enemyTrickleGrowth * T / 60) / 60 * dt;
+    if (P.enemyTrickleBase || P.enemyTrickleGrowth) crystals[t] += (P.enemyTrickleBase + P.enemyTrickleGrowth * T / 60) / 60 * dt;
+    econ.aiUpdate(t, dt);   // claims, extractors, housing, Aether mode, forward processors
     st.think -= dt;
     if (st.think <= 0) {
       st.think = 1;
@@ -1075,14 +1050,14 @@ export function createSim(world) {
       const reserve = reserveFor(t);
       const army = counts[t].army;
       // Below the minimum army the AI spends everything on units; above it, it banks for defense tiers.
-      const canBuy = (k) => crystals[t] - unitDef(k).cost >= (T > P.firstWave && army >= P.enemyMinArmy ? reserve : 0);
+      const keep = Math.max(T > P.firstWave && army >= P.enemyMinArmy ? reserve : 0, econ.aiReservePrimary(t));
+      const canBuy = (k) => { const c = econ.unitCost(k); return econ.canAfford(t, { primary: c.primary + keep, secondary: c.secondary }); };
       // harvesters (faction kind; cc builds them if the producing building is gone)
       const hk = harvKindFor(t);
       const hb = [fac, bar, hq[t]].find(b => b && producesFor(b).includes(hk));
       const harvs = counts[t].harv + (hb ? qOf(hb).filter(q => isHarvKind(q.kind)).length : 0);
-      const want = T >= P.enemyThirdHarvesterAt ? P.enemyHarvesters
-        : T >= P.enemySecondHarvesterAt ? Math.min(2, P.enemyHarvesters) : 1;
-      if (hb && harvs < want && qOf(hb).length < P.enemyMaxQueued && crystals[t] >= (unitDef(hk)?.cost ?? 100)) enqueue(hb, hk);
+      const want = econ.aiWantHarvesters(t);
+      if (hb && harvs < want && qOf(hb).length < P.enemyMaxQueued && econ.canAfford(t, econ.unitCost(hk))) enqueue(hb, hk);
       // army: weighted pick from this faction's roster, skewed toward counters of the current rival's army
       const rival = nearestEnemyHQ(t);
       const opts = aiOptions(t, [bar, fac]);
@@ -1093,7 +1068,7 @@ export function createSim(world) {
           let r = Math.random() * sum, pick = opts[0];
           for (let i = 0; i < opts.length; i++) { if ((r -= w[i]) <= 0) { pick = opts[i]; break; } }
           const u = unitDef(pick.kind);
-          if (qOf(pick.b).length < P.enemyMaxQueued && canBuy(pick.kind) && supplyUsed(t) + (u.supply ?? 1) <= C.supplyCap) enqueue(pick.b, pick.kind);
+          if (qOf(pick.b).length < P.enemyMaxQueued && canBuy(pick.kind) && supplyUsed(t) + (u.supply ?? 1) <= econ.supplyCap(t)) enqueue(pick.b, pick.kind);
         }
       }
     }
@@ -1132,6 +1107,7 @@ export function createSim(world) {
     const dt = dtAll / n;
     for (let k = 0; k < n && !ui.gameOver; k++) step(dt);
     fogTick(dtAll);
+    econ.animate(dtAll);
     for (const e of unitsBuf) {
       const m = e.mesh;
       if (!m) continue;
@@ -1172,6 +1148,7 @@ export function createSim(world) {
     T += dt; lastDt = dt;
     pathBudget = C.nav.pathsPerStep;
     updateQueues(dt);
+    econ.update(dt);
 
     unitsBuf.length = 0;
     for (const c of counts) { c.units = 0; c.army = 0; c.harv = 0; c.warden = 0; c.raider = 0; c.tank = 0; }
@@ -1211,7 +1188,7 @@ export function createSim(world) {
             if (b) { e.state = 'attack'; e.target = b; e.autoTarget = true; }
           }
         }
-      } else if (e.dps > 0 && !e.external) {
+      } else if (e.dps > 0 && !e.external && !e.unmanned) {   // unmanned defenses (no crew) don't fire
         updateCombat(e, dt);
       }
     }
@@ -1224,9 +1201,13 @@ export function createSim(world) {
     const cyc = C.dayNight.cycle;
     ui.nightFactor = 0.5 - 0.5 * Math.cos(TWO_PI * (T % cyc) / cyc);
     ui.phase = ui.nightFactor > 0.5 ? 'night' : 'day';
-    ui.crystals = Math.floor(crystals[0]);
+    const r0 = econ.res[0];
+    ui.crystals = Math.floor(r0.primary);          // legacy name = PRIMARY
+    ui.primary = Math.floor(r0.primary); ui.secondary = Math.floor(r0.secondary);
+    ui.income = { primary: econ.incomePerMin(0, 'primary'), secondary: econ.incomePerMin(0, 'secondary') };
+    ui.resNames = econ.names(0);
     ui.supply = supplyUsed(0);
-    ui.supplyCap = C.supplyCap;
+    ui.supplyCap = econ.supplyCap(0);
     let nw = Infinity;
     for (let t = 1; t < NT; t++) if (AI[t].alive && AI[t].target === 0 || AI[t].alive && AI[t].target == null) nw = Math.min(nw, AI[t].nextWave);
     ui.nextWave = Number.isFinite(nw) ? Math.max(0, nw - T) : 0;
@@ -1251,6 +1232,7 @@ export function createSim(world) {
 
   const sim = {
     update, enqueue, buildDefense, spawn, damage, spendCrystals, mul, kill, near, canHit, producesFor, unitDef, roster: ROSTER,
+    econ, supplyUsed, supplyCap: (t) => econ.supplyCap(t),
     entities: ents, crystals, queues, config: C, counts, perf, bases, hq, ai: AI,
     teamCount: NT,
     get time() { return T; },

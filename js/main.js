@@ -32,5 +32,5 @@ const createAbilityBar = await optional('./abilitybar.js', 'createAbilityBar');
 const abilities  = createAbilities && sim ? createAbilities(world, sim) : null;
 const abilityBar = createAbilityBar ? createAbilityBar(world) : null;
 world.onFrame((dt) => { abilities?.update?.(dt); abilityBar?.update?.(dt); });
-const heroes = await (await optional('./heroes.js', 'createHeroes'))?.(world, sim); // HEROES: self-registers its onFrame after the line above
 const buildMode = await (async () => { const f = await optional('./buildmode.js', 'createBuildMode'); const b = f && defense ? f(world, defense) : null; if (b) world.onFrame((dt) => b.update(dt)); return b; })(); // BUILDER: build mode UI
+const heroes = await (await optional('./heroes.js', 'createHeroes'))?.(world, sim); // HEROES: self-registers its onFrame after the line above

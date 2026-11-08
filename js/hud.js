@@ -25,12 +25,28 @@ export function createHud(world, sim) {
   // ---- top bar
   const top = el('div', 'v-top');
   const stats = el('div', 'v-panel v-stats');
+  // ECON (owner: ECON): two faction currencies (icon, amount, name, +income/min) + supply used/cap.
   stats.innerHTML = `
-    <span class="v-stat"><i class="v-ico cr"></i><span data-k="cr">0</span></span>
+    <span class="v-stat v-res" data-k="pBox"><i class="v-rico" data-k="pI"></i><span class="v-rv"><b data-k="pV">0</b><small><span data-k="pN"></span> <em data-k="pR">+0/m</em></small></span></span>
+    <span class="v-stat v-res" data-k="sBox"><i class="v-rico" data-k="sI"></i><span class="v-rv"><b data-k="sV">0</b><small><span data-k="sN"></span> <em data-k="sR">+0/m</em></small></span></span>
     <span class="v-stat"><small>SUP</small><span data-k="sup">0/0</span></span>
     <span class="v-stat"><small>T</small><span data-k="time">00:00</span></span>
     <span class="v-stat"><i class="v-phase" data-k="phase"></i><small data-k="phaseTxt">Day</small></span>`;
   const q = (k) => stats.querySelector(`[data-k="${k}"]`);
+  if (!document.getElementById('v-econ-css')) {
+    const st = document.createElement('style'); st.id = 'v-econ-css';
+    st.textContent = `.v-res{gap:4px}.v-rico{font-style:normal;font-size:16px;line-height:1;width:18px;text-align:center}
+.v-rv{display:flex;flex-direction:column;line-height:1.05}.v-rv b{font-size:15px}.v-rv small{font-size:10px!important;white-space:nowrap}
+.v-rv em{font-style:normal;color:#8fe39a}.v-res.v-low b{color:#ff9a7a}
+.v-psheet{position:absolute;left:calc(8px + var(--sal));top:calc(58px + var(--sat));width:236px;padding:10px 12px;display:none;flex-direction:column;gap:6px}
+.v-psheet.on{display:flex}.v-psheet .t{font-size:12px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;display:flex;justify-content:space-between}
+.v-psheet .nm{font-size:16px;font-weight:700}.v-psheet .inf{font-size:13px;color:#8feaff}
+#hud .v-psheet button{height:44px;font-weight:700;display:flex;flex-direction:column;justify-content:center;align-items:flex-start;padding:2px 10px;text-align:left}
+#hud .v-psheet button small{font-size:11px;color:#ffd27a;font-weight:500}#hud .v-psheet button.act{border-color:#8fe39a}
+.v-psheet .why{font-size:11px;color:#ff9a7a}`;
+    document.head.append(st);
+  }
+  const kfmt = (n) => { n = Math.floor(n || 0); return n >= 10000 ? (n / 1000).toFixed(1) + 'k' : String(n); };
   const debug = new URLSearchParams(location.search).get('debug') === '1';
   let dbg = null, dbgFrames = 0, dbgT0 = performance.now();
   if (debug) { dbg = el('span', 'v-stat v-dbg', '<small>FPS</small><span>--</span><small>E</small><span>0</span>'); stats.append(dbg); }
@@ -161,6 +177,56 @@ export function createHud(world, sim) {
     else if (r === undefined && !sim?.buildDefense && !world.defense?.buildDefense) flash('Defense offline');
   });
 
+  // ---- plot sheet (owner: ECON) — fallback when BUILDER's build menu (world.buildmode.openPlotSheet) isn't present.
+  // Opens on a tap on a plot / Aether crystal, or when one own extractor / processor / housing is selected.
+  const psheet = el('div', 'v-panel v-psheet');
+  psheet.innerHTML = `<span class="t"><span>Land</span><button class="x" style="height:28px;min-width:28px;padding:0 8px">✕</button></span><span class="nm"></span><div class="acts" style="display:flex;flex-direction:column;gap:6px"></div>`;
+  root.append(psheet);
+  let plotEnt = null, plotKey = '', plotT = 0, lastTapSeen = null;
+  psheet.querySelector('.x').addEventListener('click', (e) => { stop(e); plotEnt = null; });
+  const econEnt = (e) => e && (e.isPlot || e.extractor || e.processor || e.kind === 'housing' || (e.kind === 'crystal' && e.plot));
+  function openPlot(e) {
+    if (e?.kind === 'crystal') e = e.plot;
+    const bm = world.buildmode;
+    if (typeof bm?.openPlotSheet === 'function') { try { bm.openPlotSheet(e); return; } catch (err) { console.warn('[hud] openPlotSheet failed', err?.message); } }
+    plotEnt = e; plotKey = ''; plotT = 0;
+  }
+  function updatePlotSheet(now) {
+    const ec = world.econ;
+    if (!ec) return;
+    const tap = world.input?.tap;
+    if (tap && tap !== lastTapSeen) {
+      lastTapSeen = tap;
+      const h = tap.hit;
+      if (econEnt(h) && (h.team < 0 || h.team === 0)) openPlot(h);
+      else if (plotEnt && !h) plotEnt = null;          // tap on empty ground closes it
+    }
+    const sel = world.input?.selected;
+    if (sel && sel.size === 1) { const [one] = sel; if (one !== plotEnt && one.team === 0 && econEnt(one) && one !== lastSelEcon) { lastSelEcon = one; openPlot(one); } }
+    if (!sel || sel.size !== 1) lastSelEcon = null;
+    if (plotEnt && (plotEnt.state === 'dead')) plotEnt = plotEnt.plot && plotEnt.plot.state !== 'dead' ? plotEnt.plot : null;
+    psheet.classList.toggle('on', !!plotEnt);
+    if (!plotEnt || now - plotT < 250) return;
+    plotT = now;
+    const acts = ec.plotActions(plotEnt, 0);
+    const title = ec.plotTitle(plotEnt, 0);
+    const key = title + '|' + acts.map(a => `${a.label}${a.enabled}${a.active}${a.reason}${a.costText}`).join('|');
+    if (key === plotKey) return;
+    plotKey = key;
+    setText(psheet.querySelector('.nm'), title);
+    const box = psheet.querySelector('.acts');
+    box.innerHTML = '';
+    for (const a of acts) {
+      if (a.info || !a.run) { box.append(el('span', 'inf', a.label)); continue; }
+      const b = el('button', a.active ? 'act' : '', `<span>${a.label}</span>${a.costText ? `<small>${a.costText}</small>` : ''}`);
+      b.disabled = !a.enabled;
+      b.addEventListener('click', (ev) => { stop(ev); const r = a.run?.(); if (r && r.ok === false && r.reason) flash(r.reason); plotKey = ''; plotT = 0; });
+      box.append(b);
+      if (!a.enabled && a.reason) box.append(el('span', 'why', a.reason));
+    }
+  }
+  let lastSelEcon = null;
+
   // ---- game over
   const over = el('div', 'v-over');
   over.innerHTML = `<div class="v-panel box"><h2></h2><span class="sub"></span><button>Restart</button></div>`;
@@ -228,7 +294,16 @@ export function createHud(world, sim) {
 
   function update() {
     const ui = world.ui, now = performance.now();
-    setText(q('cr'), String(Math.floor(ui.crystals || 0)));
+    // ECON: currencies
+    const RN = ui.resNames || world.econ?.names?.(0);
+    if (RN) {
+      setText(q('pI'), RN.pIcon); setText(q('sI'), RN.sIcon); setText(q('pN'), RN.primary); setText(q('sN'), RN.secondary);
+      q('pI').style.color = RN.pColor; q('sI').style.color = RN.sColor;
+    }
+    setText(q('pV'), kfmt(ui.primary ?? ui.crystals)); setText(q('sV'), kfmt(ui.secondary));
+    setText(q('pR'), '+' + Math.round(ui.income?.primary || 0) + '/m'); setText(q('sR'), '+' + Math.round(ui.income?.secondary || 0) + '/m');
+    q('pBox').classList.toggle('v-low', (ui.primary ?? 0) < 60); q('sBox').classList.toggle('v-low', (ui.secondary ?? 0) < 30);
+    updatePlotSheet(now);
     const supTxt = `${ui.supply || 0}/${ui.supplyCap || 0}`;
     setText(q('sup'), supTxt);
     q('sup').classList.toggle('v-full', ui.supplyCap > 0 && ui.supply >= ui.supplyCap);

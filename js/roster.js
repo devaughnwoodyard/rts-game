@@ -30,7 +30,7 @@ const B = {
   // ---------------------------------------------------------------- VANGUARD: industrial all-rounder
   vanguard_trooper: { faction: 'vanguard', role: 'infantry', name: 'Ironjacket Trooper', cost: { primary: 70, secondary: 0 }, buildTime: 20, building: 'barracks', supply: 1,
     hp: 140, armor: 0.15, speed: 7.2, sight: 18, range: 10, dps: 9, cooldown: 1.4, splash: 3, r: 1.2, cls: 'inf', projectile: 'minimissile',
-    canHitAir: true, vs: { inf: 0.9, veh: 1.3, bld: 1.0, air: 1.0 },
+    canHitAir: true, vs: { inf: 0.9, veh: 1.3, bld: 1.0, light: 1.2, air: 1.0 },
     abilities: ['vg_frag', 'vg_digin', 'vg_flare', 'vg_brace'], blurb: 'Plate-armored trooper with a shoulder mini-missile pod (splash).' },
   vanguard_apc: { faction: 'vanguard', role: 'light', name: 'Bulldog APC', cost: { primary: 100, secondary: 0 }, buildTime: 24, building: 'barracks', supply: 2,
     hp: 240, armor: 0.2, speed: 11.5, sight: 22, range: 10, dps: 11, cooldown: 1.2, splash: 3, r: 1.7, cls: 'veh', light: true, projectile: 'minimissile',
@@ -141,7 +141,12 @@ const B = {
 
 /*BEGIN TUNING*/
 export const TUNING = {
-  "faction": { "vanguard": 0.88, "volcanic": 0.82, "earth": 0.92, "storm": 1.5 },
+  "faction": {
+    "vanguard": 0.9873,
+    "volcanic": 1.0091,
+    "earth": 0.9668,
+    "storm": 1.0382
+  },
   "unit": {}
 };
 /*END TUNING*/
